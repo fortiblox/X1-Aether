@@ -16,6 +16,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m'
 
 # Configuration
@@ -61,6 +62,39 @@ print_banner() {
     echo ""
 }
 
+print_overview() {
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}What This Script Will Do:${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "  1. Check system requirements (RAM, CPU, disk space)"
+    echo "  2. Install build tools, Rust, and Solana CLI"
+    echo "  3. Generate or import your node identity keypair"
+    echo "  4. Build the validator from source (compiles Tachyon)"
+    echo "  5. Configure firewall ports (8000-8020, 8899)"
+    echo "  6. Install systemd service for auto-start"
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}What You'll Need:${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "  - sudo/root access"
+    echo "  - Stable internet connection"
+    echo "  - 15-30 minutes for compilation"
+    echo ""
+    echo -e "${DIM}  Optional: Existing identity.json file if migrating${NC}"
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}Minimum Requirements:${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "  - 8 GB RAM (16 GB recommended)"
+    echo "  - 4 CPU cores (8 recommended)"
+    echo "  - 500 GB NVMe storage (1 TB recommended)"
+    echo "  - Ports 8000-8020, 8899 open"
+    echo ""
+}
+
 print_step() {
     local step=$1
     local total=$2
@@ -76,7 +110,7 @@ print_step() {
 # STEP 1: System Requirements Check
 # ============================================================================
 check_requirements() {
-    print_step 1 5 "Checking System Requirements"
+    print_step 1 6 "Checking System Requirements"
 
     OS=$(uname -s)
     ARCH=$(uname -m)
@@ -162,7 +196,7 @@ check_requirements() {
 # STEP 2: Install Dependencies
 # ============================================================================
 install_dependencies() {
-    print_step 2 5 "Installing Dependencies"
+    print_step 2 6 "Installing Dependencies"
 
     log_info "Installing system packages..."
 
@@ -217,7 +251,7 @@ install_dependencies() {
 # STEP 3: Setup Identity
 # ============================================================================
 setup_identity() {
-    print_step 3 5 "Node Identity Setup"
+    print_step 3 6 "Node Identity Setup"
 
     mkdir -p "$CONFIG_DIR"
     IDENTITY_PATH="$CONFIG_DIR/identity.json"
@@ -330,7 +364,7 @@ setup_identity() {
 # STEP 4: Build Validator
 # ============================================================================
 build_validator() {
-    print_step 4 5 "Building X1-Aether"
+    print_step 4 6 "Building X1-Aether"
 
     log_warn "Building from source. This takes 15-30 minutes..."
     echo ""
@@ -366,10 +400,66 @@ build_validator() {
 }
 
 # ============================================================================
-# STEP 5: Configure and Install Service
+# STEP 5: Configure Firewall
+# ============================================================================
+configure_firewall() {
+    print_step 5 6 "Configuring Firewall"
+
+    log_info "Opening required ports..."
+    echo ""
+    echo "Required ports:"
+    echo "  - 8000-8020 (UDP/TCP): Gossip and data transfer"
+    echo "  - 8899 (TCP): RPC (local only)"
+    echo ""
+
+    # Detect and configure firewall
+    if command -v ufw &>/dev/null && sudo ufw status | grep -q "Status: active"; then
+        log_info "Detected UFW firewall, configuring..."
+        sudo ufw allow 8000:8020/tcp >/dev/null 2>&1
+        sudo ufw allow 8000:8020/udp >/dev/null 2>&1
+        sudo ufw allow 8899/tcp >/dev/null 2>&1
+        log_success "UFW rules added"
+
+    elif command -v firewall-cmd &>/dev/null && systemctl is-active --quiet firewalld; then
+        log_info "Detected firewalld, configuring..."
+        sudo firewall-cmd --permanent --add-port=8000-8020/tcp >/dev/null 2>&1
+        sudo firewall-cmd --permanent --add-port=8000-8020/udp >/dev/null 2>&1
+        sudo firewall-cmd --permanent --add-port=8899/tcp >/dev/null 2>&1
+        sudo firewall-cmd --reload >/dev/null 2>&1
+        log_success "Firewalld rules added"
+
+    elif command -v iptables &>/dev/null; then
+        log_info "Configuring iptables..."
+        sudo iptables -A INPUT -p tcp --dport 8000:8020 -j ACCEPT 2>/dev/null || true
+        sudo iptables -A INPUT -p udp --dport 8000:8020 -j ACCEPT 2>/dev/null || true
+        sudo iptables -A INPUT -p tcp --dport 8899 -j ACCEPT 2>/dev/null || true
+
+        # Try to save rules
+        if command -v netfilter-persistent &>/dev/null; then
+            sudo netfilter-persistent save >/dev/null 2>&1 || true
+        elif [[ -f /etc/sysconfig/iptables ]]; then
+            sudo service iptables save >/dev/null 2>&1 || true
+        fi
+        log_success "iptables rules added"
+    else
+        log_warn "No firewall detected or firewall inactive"
+        echo ""
+        echo -e "${YELLOW}Please manually open these ports if you have a firewall:${NC}"
+        echo "  - 8000-8020/tcp and 8000-8020/udp"
+        echo "  - 8899/tcp"
+    fi
+
+    # Check cloud provider firewalls
+    echo ""
+    echo -e "${DIM}Note: If running on a cloud provider (AWS, GCP, Azure, etc.),${NC}"
+    echo -e "${DIM}also configure the security group/firewall rules in your provider's console.${NC}"
+}
+
+# ============================================================================
+# STEP 6: Configure and Install Service
 # ============================================================================
 install_service() {
-    print_step 5 5 "Installing Service"
+    print_step 6 6 "Installing Service"
 
     # Create CLI wrapper
     log_info "Creating CLI wrapper..."
@@ -496,9 +586,8 @@ print_completion() {
 # ============================================================================
 main() {
     print_banner
+    print_overview
 
-    echo "This installer will set up a non-voting verification node."
-    echo ""
     read -p "Proceed with installation? (Y/n): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Nn]$ ]]; then
@@ -510,6 +599,7 @@ main() {
     install_dependencies
     setup_identity
     build_validator
+    configure_firewall
     install_service
     print_completion
 }
