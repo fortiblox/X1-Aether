@@ -721,6 +721,23 @@ install_dependencies() {
     fi
 }
 
+backup_wallet() {
+    local wallet_file="$1"
+    local wallet_name="$2"
+
+    if [[ -f "$wallet_file" ]]; then
+        local backup_dir="$CONFIG_DIR/backups"
+        local timestamp=$(date +%Y-%m-%d_%H-%M-%S)
+        local backup_file="$backup_dir/${wallet_name}_${timestamp}.json"
+
+        mkdir -p "$backup_dir"
+        cp "$wallet_file" "$backup_file"
+        chmod 600 "$backup_file"
+
+        log_success "Backed up to: $backup_file"
+    fi
+}
+
 setup_identity() {
     print_step 3 7 "Node Identity Setup"
 
@@ -729,15 +746,26 @@ setup_identity() {
 
     if [[ -f "$IDENTITY_PATH" ]]; then
         EXISTING=$(solana-keygen pubkey "$IDENTITY_PATH" 2>/dev/null || echo "unknown")
-        echo "Existing identity: $EXISTING"
         echo ""
-        echo "  1) Keep existing identity"
-        echo "  2) Import from file"
-        echo "  3) Import from bytes"
-        echo "  4) Generate new"
+        echo -e "${RED}╔═══════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${RED}║  WARNING: EXISTING WALLET FOUND                           ║${NC}"
+        echo -e "${RED}╚═══════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        echo -e "  Pubkey: ${CYAN}$EXISTING${NC}"
+        echo -e "  File:   ${CYAN}$IDENTITY_PATH${NC}"
+        echo ""
+        echo -e "${YELLOW}If you overwrite this wallet without a backup, it will be${NC}"
+        echo -e "${YELLOW}LOST FOREVER. We cannot recover it for you.${NC}"
+        echo ""
+        echo "  1) Keep existing identity (recommended)"
+        echo "  2) Import from file (will backup existing)"
+        echo "  3) Import from bytes (will backup existing)"
+        echo "  4) Generate NEW identity (will backup existing)"
         echo ""
         read -p "Select [1-4]: " choice
     else
+        echo "No existing identity found."
+        echo ""
         echo "  1) Generate new identity"
         echo "  2) Import from file"
         echo "  3) Import from bytes"
@@ -753,6 +781,10 @@ setup_identity() {
     case $choice in
         1) log_success "Keeping existing identity" ;;
         2)
+            if [[ -f "$IDENTITY_PATH" ]]; then
+                log_info "Backing up existing wallet..."
+                backup_wallet "$IDENTITY_PATH" "identity"
+            fi
             read -p "Path to identity.json: " path
             path="${path/#\~/$HOME}"
             cp "$path" "$IDENTITY_PATH"
@@ -760,6 +792,10 @@ setup_identity() {
             log_success "Imported: $(solana-keygen pubkey $IDENTITY_PATH)"
             ;;
         3)
+            if [[ -f "$IDENTITY_PATH" ]]; then
+                log_info "Backing up existing wallet..."
+                backup_wallet "$IDENTITY_PATH" "identity"
+            fi
             echo "Paste bytes:"
             read -r bytes
             echo "$bytes" > "$IDENTITY_PATH"
@@ -768,7 +804,8 @@ setup_identity() {
             ;;
         4)
             if [[ -f "$IDENTITY_PATH" ]]; then
-                mv "$IDENTITY_PATH" "$IDENTITY_PATH.backup.$(date +%s)"
+                log_info "Backing up existing wallet..."
+                backup_wallet "$IDENTITY_PATH" "identity"
             fi
             solana-keygen new -o "$IDENTITY_PATH" --no-passphrase --force
             chmod 600 "$IDENTITY_PATH"
@@ -781,6 +818,10 @@ setup_identity() {
     echo -e "${YELLOW}║  BACKUP YOUR IDENTITY FILE                                ║${NC}"
     echo -e "${YELLOW}║  $IDENTITY_PATH${NC}"
     echo -e "${YELLOW}╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    if [[ -d "$CONFIG_DIR/backups" ]]; then
+        echo -e "${DIM}Previous backups stored in: $CONFIG_DIR/backups/${NC}"
+    fi
     read -p "Press Enter to continue..."
 }
 
