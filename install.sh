@@ -14,6 +14,8 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
 NC='\033[0m'
 
 # Configuration
@@ -40,26 +42,41 @@ KNOWN_VALIDATORS=(
 
 # Logging
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
+log_success() { echo -e "${GREEN}[PASS]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+log_error() { echo -e "${RED}[FAIL]${NC} $1"; }
 
 print_banner() {
+    clear
     echo ""
-    echo -e "${BLUE}╔═══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║${NC}                                                           ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}   ${GREEN}X1-Aether${NC} - Verification Node for X1 Blockchain      ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}   Version: ${AETHER_VERSION}                                         ${BLUE}║${NC}"
-    echo -e "${BLUE}║${NC}                                                           ${BLUE}║${NC}"
-    echo -e "${BLUE}╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC}                                                           ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC}   ${BOLD}${GREEN}X1-Aether${NC} - Verification Node for X1 Blockchain      ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC}   Version: ${AETHER_VERSION}                                         ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC}                                                           ${CYAN}║${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "${YELLOW}X1-Aether verifies the blockchain but does NOT vote or earn rewards.${NC}"
     echo -e "${YELLOW}For staking rewards, use X1-Forge instead.${NC}"
     echo ""
 }
 
-detect_system() {
-    log_info "Detecting system specifications..."
+print_step() {
+    local step=$1
+    local total=$2
+    local desc=$3
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}Step ${step}/${total}: ${desc}${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+}
+
+# ============================================================================
+# STEP 1: System Requirements Check
+# ============================================================================
+check_requirements() {
+    print_step 1 5 "Checking System Requirements"
 
     OS=$(uname -s)
     ARCH=$(uname -m)
@@ -72,59 +89,86 @@ detect_system() {
     CPU_CORES=$(nproc)
     RAM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
     RAM_GB=$((RAM_KB / 1024 / 1024))
-    DISK_FREE_GB=$(df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
+    DISK_FREE_GB=$(df -BG /mnt 2>/dev/null | awk 'NR==2 {print $4}' | tr -d 'G' || df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
 
+    echo "Scanning system..."
     echo ""
-    echo "System Specifications:"
-    echo "  OS:        $OS ($ARCH)"
-    echo "  CPU:       $CPU_CORES cores"
-    echo "  RAM:       ${RAM_GB}GB"
-    echo "  Disk Free: ${DISK_FREE_GB}GB"
-    echo ""
-}
-
-check_requirements() {
-    log_info "Checking minimum requirements..."
 
     local errors=0
+    local warnings=0
 
-    # Minimum 8GB RAM for non-voting mode
-    if [[ $RAM_GB -lt 7 ]]; then
-        log_error "Insufficient RAM: ${RAM_GB}GB (minimum 8GB required)"
+    # RAM Check (8GB minimum for non-voting)
+    if [[ $RAM_GB -ge 16 ]]; then
+        log_success "RAM: ${RAM_GB}GB (recommended: 16GB+)"
+    elif [[ $RAM_GB -ge 7 ]]; then
+        log_warn "RAM: ${RAM_GB}GB (minimum met, 16GB recommended)"
+        warnings=$((warnings + 1))
+    else
+        log_error "RAM: ${RAM_GB}GB (minimum 8GB required)"
         errors=$((errors + 1))
-    else
-        log_success "RAM: ${RAM_GB}GB"
     fi
 
-    # Minimum 4 cores
-    if [[ $CPU_CORES -lt 4 ]]; then
-        log_error "Insufficient CPU: ${CPU_CORES} cores (minimum 4 required)"
+    # CPU Check (4 cores minimum)
+    if [[ $CPU_CORES -ge 8 ]]; then
+        log_success "CPU: ${CPU_CORES} cores (recommended: 8+)"
+    elif [[ $CPU_CORES -ge 4 ]]; then
+        log_warn "CPU: ${CPU_CORES} cores (minimum met, 8 recommended)"
+        warnings=$((warnings + 1))
+    else
+        log_error "CPU: ${CPU_CORES} cores (minimum 4 required)"
         errors=$((errors + 1))
-    else
-        log_success "CPU: ${CPU_CORES} cores"
     fi
 
-    # Minimum 500GB disk
-    if [[ $DISK_FREE_GB -lt 500 ]]; then
-        log_warn "Low disk space: ${DISK_FREE_GB}GB (1TB+ recommended)"
+    # Disk Check (500GB minimum)
+    if [[ $DISK_FREE_GB -ge 1000 ]]; then
+        log_success "Disk: ${DISK_FREE_GB}GB free (recommended: 1TB+)"
+    elif [[ $DISK_FREE_GB -ge 500 ]]; then
+        log_warn "Disk: ${DISK_FREE_GB}GB free (minimum met, 1TB recommended)"
+        warnings=$((warnings + 1))
     else
-        log_success "Disk: ${DISK_FREE_GB}GB free"
+        log_error "Disk: ${DISK_FREE_GB}GB free (minimum 500GB required)"
+        errors=$((errors + 1))
     fi
+
+    # Network ports check
+    if command -v ss &>/dev/null; then
+        if ss -tuln | grep -q ':8899 '; then
+            log_warn "Port 8899 already in use"
+            warnings=$((warnings + 1))
+        else
+            log_success "Port 8899: Available"
+        fi
+    else
+        log_success "Port check: Skipped (ss not available)"
+    fi
+
+    echo ""
 
     if [[ $errors -gt 0 ]]; then
-        log_error "System does not meet minimum requirements"
+        echo -e "${RED}╔═══════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${RED}║  System does not meet minimum requirements                ║${NC}"
+        echo -e "${RED}╚═══════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        echo "X1-Aether requires: 8GB RAM, 4 CPU cores, 500GB disk"
         exit 1
+    elif [[ $warnings -gt 0 ]]; then
+        echo -e "${YELLOW}System meets minimum requirements with $warnings warning(s)${NC}"
+    else
+        echo -e "${GREEN}System meets all recommended requirements${NC}"
     fi
-
-    log_success "All requirements met!"
 }
 
+# ============================================================================
+# STEP 2: Install Dependencies
+# ============================================================================
 install_dependencies() {
-    log_info "Installing system dependencies..."
+    print_step 2 5 "Installing Dependencies"
+
+    log_info "Installing system packages..."
 
     if command -v apt-get &>/dev/null; then
-        sudo apt-get update
-        sudo apt-get install -y \
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq \
             build-essential \
             pkg-config \
             libssl-dev \
@@ -141,12 +185,14 @@ install_dependencies() {
             gcc gcc-c++ make \
             pkgconfig openssl-devel systemd-devel clang \
             protobuf-compiler curl wget git jq zstd
+    else
+        log_error "Unsupported package manager. Install dependencies manually."
+        exit 1
     fi
 
-    log_success "Dependencies installed"
-}
+    log_success "System packages installed"
 
-install_rust() {
+    # Install Rust
     if command -v rustc &>/dev/null; then
         log_success "Rust already installed: $(rustc --version)"
     else
@@ -155,33 +201,156 @@ install_rust() {
         source "$HOME/.cargo/env"
         log_success "Rust installed"
     fi
+
+    # Install Solana CLI (for keygen)
+    if command -v solana-keygen &>/dev/null; then
+        log_success "Solana CLI already installed"
+    else
+        log_info "Installing Solana CLI..."
+        sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+        export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+        log_success "Solana CLI installed"
+    fi
 }
 
-create_directories() {
-    log_info "Creating directory structure..."
+# ============================================================================
+# STEP 3: Setup Identity
+# ============================================================================
+setup_identity() {
+    print_step 3 5 "Node Identity Setup"
 
-    sudo mkdir -p "$INSTALL_DIR"/{bin,lib}
     mkdir -p "$CONFIG_DIR"
+    IDENTITY_PATH="$CONFIG_DIR/identity.json"
+
+    # Check for existing identity
+    if [[ -f "$IDENTITY_PATH" ]]; then
+        EXISTING_PUBKEY=$(solana-keygen pubkey "$IDENTITY_PATH" 2>/dev/null || echo "unknown")
+        echo "Existing identity found: $EXISTING_PUBKEY"
+        echo ""
+        echo "What would you like to do?"
+        echo ""
+        echo "  1) Keep existing identity"
+        echo "  2) Import identity from another file"
+        echo "  3) Import identity from private key bytes"
+        echo "  4) Generate new identity (overwrites existing)"
+        echo ""
+        read -p "Select option [1-4]: " identity_choice
+    else
+        echo "No existing identity found."
+        echo ""
+        echo "What would you like to do?"
+        echo ""
+        echo "  1) Generate new identity"
+        echo "  2) Import identity from another file"
+        echo "  3) Import identity from private key bytes"
+        echo ""
+        read -p "Select option [1-3]: " identity_choice
+
+        # Remap choices for no-existing-identity case
+        case $identity_choice in
+            1) identity_choice=4 ;;  # Generate new
+            2) identity_choice=2 ;;  # Import file
+            3) identity_choice=3 ;;  # Import bytes
+        esac
+    fi
+
+    case $identity_choice in
+        1)
+            log_success "Keeping existing identity: $EXISTING_PUBKEY"
+            ;;
+        2)
+            echo ""
+            read -p "Enter path to identity.json file: " import_path
+            import_path="${import_path/#\~/$HOME}"
+
+            if [[ ! -f "$import_path" ]]; then
+                log_error "File not found: $import_path"
+                exit 1
+            fi
+
+            # Validate it's a valid keypair
+            if solana-keygen pubkey "$import_path" &>/dev/null; then
+                cp "$import_path" "$IDENTITY_PATH"
+                chmod 600 "$IDENTITY_PATH"
+                log_success "Identity imported: $(solana-keygen pubkey $IDENTITY_PATH)"
+            else
+                log_error "Invalid keypair file"
+                exit 1
+            fi
+            ;;
+        3)
+            echo ""
+            echo "Paste your private key bytes (JSON array format):"
+            echo "Example: [123,45,67,...]"
+            echo ""
+            read -p "> " key_bytes
+
+            echo "$key_bytes" > "$IDENTITY_PATH"
+            chmod 600 "$IDENTITY_PATH"
+
+            if solana-keygen pubkey "$IDENTITY_PATH" &>/dev/null; then
+                log_success "Identity imported: $(solana-keygen pubkey $IDENTITY_PATH)"
+            else
+                log_error "Invalid private key bytes"
+                rm -f "$IDENTITY_PATH"
+                exit 1
+            fi
+            ;;
+        4)
+            if [[ -f "$IDENTITY_PATH" ]]; then
+                # Backup existing
+                mv "$IDENTITY_PATH" "$IDENTITY_PATH.backup.$(date +%s)"
+                log_warn "Existing identity backed up"
+            fi
+
+            solana-keygen new -o "$IDENTITY_PATH" --no-passphrase --force
+            chmod 600 "$IDENTITY_PATH"
+            log_success "New identity generated: $(solana-keygen pubkey $IDENTITY_PATH)"
+            ;;
+        *)
+            log_error "Invalid option"
+            exit 1
+            ;;
+    esac
+
+    echo ""
+    echo -e "${YELLOW}╔═══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${YELLOW}║  BACKUP YOUR IDENTITY FILE                                ║${NC}"
+    echo -e "${YELLOW}╠═══════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${YELLOW}║${NC}  Location: $CONFIG_DIR/identity.json"
+    echo -e "${YELLOW}║${NC}  "
+    echo -e "${YELLOW}║${NC}  Store a copy in secure offline storage."
+    echo -e "${YELLOW}║${NC}  Loss of this file = loss of your node identity."
+    echo -e "${YELLOW}╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    read -p "Press Enter to continue..."
+}
+
+# ============================================================================
+# STEP 4: Build Validator
+# ============================================================================
+build_validator() {
+    print_step 4 5 "Building X1-Aether"
+
+    log_warn "Building from source. This takes 15-30 minutes..."
+    echo ""
+
+    # Create directories
+    sudo mkdir -p "$INSTALL_DIR"/{bin,lib}
     sudo mkdir -p "$DATA_DIR"/ledger
 
     if [[ $EUID -ne 0 ]]; then
         sudo chown -R "$USER:$USER" "$DATA_DIR"
     fi
 
-    log_success "Directories created"
-}
-
-build_validator() {
-    log_info "Building X1-Aether (Tachyon non-voting validator)..."
-    log_warn "This will take 15-30 minutes on first build..."
-
     cd /tmp
     rm -rf tachyon-build
 
+    log_info "Cloning Tachyon repository..."
     git clone --depth 1 https://github.com/$TACHYON_REPO.git tachyon-build
     cd tachyon-build
 
-    # Build with optimizations
+    log_info "Compiling (this is the slow part)..."
     export RUSTFLAGS="-C target-cpu=native"
     cargo build --release -p tachyon-validator
 
@@ -196,27 +365,13 @@ build_validator() {
     log_success "X1-Aether built successfully"
 }
 
-generate_identity() {
-    log_info "Generating node identity..."
+# ============================================================================
+# STEP 5: Configure and Install Service
+# ============================================================================
+install_service() {
+    print_step 5 5 "Installing Service"
 
-    IDENTITY_PATH="$CONFIG_DIR/identity.json"
-
-    if [[ -f "$IDENTITY_PATH" ]]; then
-        log_warn "Identity already exists at $IDENTITY_PATH"
-    else
-        # Install solana CLI for keygen
-        if ! command -v solana-keygen &>/dev/null; then
-            sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
-            export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
-        fi
-
-        solana-keygen new -o "$IDENTITY_PATH" --no-passphrase --force
-        chmod 600 "$IDENTITY_PATH"
-        log_success "Identity generated: $(solana-keygen pubkey $IDENTITY_PATH)"
-    fi
-}
-
-create_wrapper() {
+    # Create CLI wrapper
     log_info "Creating CLI wrapper..."
 
     sudo tee "$BIN_DIR/x1-aether" > /dev/null << 'WRAPPER'
@@ -246,17 +401,15 @@ case "$1" in
 esac
 WRAPPER
     sudo chmod +x "$BIN_DIR/x1-aether"
-    log_success "CLI wrapper created"
-}
-
-install_systemd_service() {
-    log_info "Installing systemd service..."
 
     # Calculate ledger limit based on available disk
+    DISK_FREE_GB=$(df -BG /mnt 2>/dev/null | awk 'NR==2 {print $4}' | tr -d 'G' || df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
     LEDGER_LIMIT=$((DISK_FREE_GB * 1000000 / 2))
     if [[ $LEDGER_LIMIT -gt 50000000 ]]; then
         LEDGER_LIMIT=50000000
     fi
+
+    log_info "Installing systemd service..."
 
     sudo tee /etc/systemd/system/x1-aether.service > /dev/null << EOF
 [Unit]
@@ -301,33 +454,50 @@ EOF
     sudo systemctl daemon-reload
     sudo systemctl enable x1-aether
 
-    log_success "Systemd service installed"
+    log_success "Service installed and enabled"
 }
 
+# ============================================================================
+# Completion
+# ============================================================================
 print_completion() {
+    IDENTITY_PUBKEY=$(solana-keygen pubkey "$CONFIG_DIR/identity.json" 2>/dev/null || echo "See config")
+
     echo ""
     echo -e "${GREEN}╔═══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║${NC}   ${GREEN}X1-Aether Installation Complete!${NC}                       ${GREEN}║${NC}"
+    echo -e "${GREEN}║                                                           ║${NC}"
+    echo -e "${GREEN}║   ${BOLD}X1-Aether Installation Complete!${NC}                       ${GREEN}║${NC}"
+    echo -e "${GREEN}║                                                           ║${NC}"
     echo -e "${GREEN}╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo "Node Identity: $(solana-keygen pubkey $CONFIG_DIR/identity.json 2>/dev/null || echo 'Generated')"
+    echo "Node Identity: $IDENTITY_PUBKEY"
     echo ""
-    echo "Start the verifier:"
-    echo "  sudo systemctl start x1-aether"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}Next Steps:${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    echo "Monitor progress:"
-    echo "  x1-aether logs"
-    echo "  x1-aether catchup"
+    echo "1. Start the verification node:"
+    echo "   sudo systemctl start x1-aether"
     echo ""
-    echo -e "${YELLOW}Note: Initial sync takes several hours. This node does NOT earn rewards.${NC}"
+    echo "2. Monitor sync progress:"
+    echo "   x1-aether logs      # Live logs"
+    echo "   x1-aether catchup   # Sync status"
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "${YELLOW}Note: Initial sync takes several hours.${NC}"
+    echo -e "${YELLOW}This node does NOT vote or earn rewards.${NC}"
+    echo -e "${YELLOW}For staking rewards, use X1-Forge instead.${NC}"
     echo ""
 }
 
+# ============================================================================
+# Main
+# ============================================================================
 main() {
     print_banner
-    detect_system
-    check_requirements
 
+    echo "This installer will set up a non-voting verification node."
     echo ""
     read -p "Proceed with installation? (Y/n): " -n 1 -r
     echo
@@ -336,13 +506,11 @@ main() {
         exit 0
     fi
 
+    check_requirements
     install_dependencies
-    install_rust
-    create_directories
+    setup_identity
     build_validator
-    generate_identity
-    create_wrapper
-    install_systemd_service
+    install_service
     print_completion
 }
 
