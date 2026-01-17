@@ -2,7 +2,7 @@
 
 **Lightweight Verification Node for X1 Blockchain**
 
-X1-Aether is a non-voting verification node that independently verifies the X1 blockchain on minimal hardware. Based on [Overclock's Mithril](https://github.com/Overclock-Validator/mithril), adapted for X1.
+X1-Aether is a non-voting verification node that independently verifies the X1 blockchain on minimal hardware.
 
 ## What is X1-Aether?
 
@@ -130,7 +130,7 @@ zstd_decoder_concurrency = 4
 
 ## Upgrading
 
-X1-Aether tracks upstream Mithril releases:
+X1-Aether tracks upstream releases:
 
 ```bash
 # Check available updates
@@ -166,12 +166,8 @@ sudo systemctl restart x1-aether
 ## Support
 
 - Issues: https://github.com/fortiblox/X1-Aether/issues
-- Mithril upstream: https://github.com/Overclock-Validator/mithril
 
 ## License
 
 Apache 2.0
 
-## Credits
-
-Based on [Overclock's Mithril](https://github.com/Overclock-Validator/mithril), adapted for X1 blockchain.

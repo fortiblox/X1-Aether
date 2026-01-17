@@ -22,7 +22,7 @@ NC='\033[0m'
 # Configuration
 AETHER_VERSION="1.0.0"
 AETHER_REPO="fortiblox/X1-Aether"
-MITHRIL_REPO="Overclock-Validator/mithril"
+UPSTREAM_REPO="Overclock-Validator/mithril"
 INSTALL_DIR="/opt/x1-aether"
 CONFIG_DIR="$HOME/.config/x1-aether"
 DATA_DIR="/mnt/x1-aether"
@@ -188,17 +188,17 @@ create_directories() {
     log_success "Directories created"
 }
 
-# Build X1-Aether from Mithril source
+# Build X1-Aether from source
 build_aether() {
     log_info "Building X1-Aether from source..."
     log_warn "This will take 5-10 minutes..."
 
     cd /tmp
-    rm -rf mithril-build
+    rm -rf aether-build
 
-    # Clone Mithril
-    git clone --depth 1 https://github.com/$MITHRIL_REPO.git mithril-build
-    cd mithril-build
+    # Clone upstream
+    git clone --depth 1 https://github.com/$UPSTREAM_REPO.git aether-build
+    cd aether-build
 
     # Build with optimizations
     export CGO_ENABLED=1
@@ -212,7 +212,7 @@ build_aether() {
 
     # Cleanup
     cd /
-    rm -rf /tmp/mithril-build
+    rm -rf /tmp/aether-build
 
     log_success "X1-Aether built successfully"
 }
