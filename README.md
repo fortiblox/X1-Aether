@@ -1,37 +1,27 @@
 # X1-Aether
 
-**Lightweight Verification Node for X1 Blockchain**
+**Non-Voting Verification Node for X1 Blockchain**
 
-X1-Aether is a non-voting verification node that independently verifies the X1 blockchain on minimal hardware.
+X1-Aether lets you verify the X1 blockchain independently without participating in consensus or earning rewards. It runs the Tachyon validator in non-voting mode on minimal hardware.
 
-## What is X1-Aether?
+## What Does X1-Aether Do?
 
-X1-Aether downloads blocks from the X1 network and replays them locally to verify the blockchain state. It's like having your own "blockchain auditor" - you can independently confirm that the chain is valid without trusting anyone.
+- Downloads and verifies every block on the X1 network
+- Confirms the blockchain state is valid
+- Does NOT vote on blocks
+- Does NOT earn staking rewards
 
-**Important:** X1-Aether does NOT:
-- Participate in consensus
-- Vote on blocks
-- Earn staking rewards
-
-If you want to stake and earn rewards, use [X1-Forge](https://github.com/fortiblox/X1-Forge) instead.
-
-## Features
-
-- **Lightweight**: Runs on 8GB RAM, 6 CPU cores
-- **Independent**: Verify the chain without trusting validators
-- **Simple**: One-command install, auto-configuration
-- **Efficient**: Written in Go for optimal performance
+**Want to earn rewards?** Use [X1-Forge](https://github.com/fortiblox/X1-Forge) instead.
 
 ## Requirements
 
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
-| CPU | 6 cores, 3.0 GHz | 12 cores, 3.5 GHz |
+| CPU | 4 cores | 8 cores |
 | RAM | 8 GB | 16 GB |
-| Storage | 1 TB NVMe | 2 TB NVMe |
+| Storage | 500 GB NVMe | 1 TB NVMe |
 | Network | 50 Mbps | 100 Mbps |
 | OS | Ubuntu 22.04+ | Ubuntu 24.04 |
-| Go | 1.23+ | 1.23+ |
 
 ## Quick Install
 
@@ -39,135 +29,54 @@ If you want to stake and earn rewards, use [X1-Forge](https://github.com/fortibl
 curl -sSfL https://raw.githubusercontent.com/fortiblox/X1-Aether/main/install.sh | bash
 ```
 
-## What Gets Installed
-
-- X1-Aether binary (Go-based verifier)
-- Systemd service (`x1-aether.service`)
-- Auto-tuned configuration
-- Snapshot bootstrap automation
+The installer will:
+1. Install Rust and dependencies
+2. Build from Tachyon source (x1-labs/tachyon)
+3. Generate node identity
+4. Configure systemd service with `--no-voting` mode
 
 ## Commands
 
 ```bash
+# Start verification node
+sudo systemctl start x1-aether
+
 # Check status
-sudo systemctl status x1-aether
-
-# View logs
-journalctl -u x1-aether -f
-
-# Check verification status
 x1-aether status
 
-# Check for updates
-x1-aether update --check
+# View logs
+x1-aether logs
 
-# Perform upgrade
-x1-aether update
-```
-
-## Configuration
-
-Config file: `~/.config/x1-aether/config.toml`
-
-```toml
-[network]
-cluster = "mainnet"
-
-[rpc]
-# X1 Mainnet RPC endpoint
-endpoint = "https://rpc.mainnet.x1.xyz"
-
-[paths]
-data = "/mnt/x1-aether/data"
-accountsdb = "/mnt/x1-aether/accountsdb"
-
-[performance]
-# Auto-tuned based on your hardware
-txpar = 12  # Transaction parallelism
-zstd_decoder_concurrency = 4
+# Check sync progress
+x1-aether catchup
 ```
 
 ## How It Works
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    X1 Network                            │
-│   (Validators producing and voting on blocks)           │
-└─────────────────────┬───────────────────────────────────┘
-                      │
-                      │ getBlock RPC calls
-                      ▼
-┌─────────────────────────────────────────────────────────┐
-│                   X1-Aether                              │
-│                                                          │
-│   1. Fetches confirmed blocks from RPC                  │
-│   2. Replays transactions locally                       │
-│   3. Verifies state matches network                     │
-│   4. Maintains independent AccountsDB                   │
-│                                                          │
-│   Result: Cryptographic proof chain is valid            │
-└─────────────────────────────────────────────────────────┘
-```
+X1-Aether runs the same Tachyon validator software as voting validators, but with the `--no-voting` flag. This means:
+
+- It syncs the full blockchain
+- It validates all transactions
+- It does NOT submit votes
+- It uses less resources than a voting validator
 
 ## Comparison: X1-Aether vs X1-Forge
 
 | Feature | X1-Aether | X1-Forge |
 |---------|-----------|----------|
-| Purpose | Verify chain | Vote & earn |
+| Purpose | Verify chain | Vote & earn rewards |
 | RAM Required | 8 GB | 64 GB |
 | Earns Rewards | No | Yes |
 | Votes | No | Yes |
-| Consensus | No | Yes |
-| Trust Model | Trustless verification | Network participant |
+| `--no-voting` | Yes | No |
 
 ## Use Cases
 
-- **Personal verification**: Confirm chain validity yourself
-- **Research**: Study blockchain state and history
-- **Development**: Test against verified state
-- **Auditing**: Independent chain verification
-- **Education**: Learn how Solana-style chains work
-
-## Upgrading
-
-X1-Aether tracks upstream releases:
-
-```bash
-# Check available updates
-x1-aether update --check
-
-# Upgrade
-x1-aether update
-
-# Rollback if issues
-x1-aether rollback
-```
-
-## Troubleshooting
-
-### Node not syncing
-```bash
-# Check RPC connectivity
-curl -s https://rpc.mainnet.x1.xyz/health
-
-# Check logs
-journalctl -u x1-aether -n 100
-```
-
-### High memory usage
-```bash
-# Check current usage
-x1-aether status
-
-# Restart with fresh state
-sudo systemctl restart x1-aether
-```
-
-## Support
-
-- Issues: https://github.com/fortiblox/X1-Aether/issues
+- **Personal verification**: Trustlessly verify the blockchain
+- **Development**: Test against verified chain state
+- **Research**: Study blockchain data
+- **Learning**: Understand how Solana-style validators work
 
 ## License
 
 Apache 2.0
-

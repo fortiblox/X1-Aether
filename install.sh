@@ -1,14 +1,11 @@
 #!/bin/bash
 # X1-Aether Installer
-# Lightweight Verification Node for X1 Blockchain
+# Lightweight Non-Voting Verification Node for X1 Blockchain
 #
 # Usage: curl -sSfL https://raw.githubusercontent.com/fortiblox/X1-Aether/main/install.sh | bash
 #
-# This script will:
-# 1. Check system requirements
-# 2. Install Go and dependencies
-# 3. Build X1-Aether from source
-# 4. Configure and start the verifier
+# X1-Aether runs the Tachyon validator in non-voting mode to verify
+# the blockchain without participating in consensus or earning rewards.
 
 set -e
 
@@ -21,17 +18,24 @@ NC='\033[0m'
 
 # Configuration
 AETHER_VERSION="1.0.0"
-AETHER_REPO="fortiblox/X1-Aether"
-UPSTREAM_REPO="Overclock-Validator/mithril"
+TACHYON_REPO="x1-labs/tachyon"
 INSTALL_DIR="/opt/x1-aether"
 CONFIG_DIR="$HOME/.config/x1-aether"
 DATA_DIR="/mnt/x1-aether"
 BIN_DIR="/usr/local/bin"
-GO_VERSION="1.23.0"
 
-# X1 Mainnet RPC endpoint
-RPC_ENDPOINTS=(
-    "https://rpc.mainnet.x1.xyz"
+# X1 Mainnet Configuration
+ENTRYPOINTS=(
+    "entrypoint0.mainnet.x1.xyz:8001"
+    "entrypoint1.mainnet.x1.xyz:8001"
+    "entrypoint2.mainnet.x1.xyz:8001"
+)
+KNOWN_VALIDATORS=(
+    "7ufaUVtQKzGu5tpFtii9Cg8kR4jcpjQSXwsF3oVPSMZA"
+    "5Rzytnub9yGTFHqSmauFLsAbdXFbehMwPBLiuEgKajUN"
+    "4V2QkkWce8bwTzvvwPiNRNQ4W433ZsGQi9aWU12Q8uBF"
+    "CkMwg4TM6jaSC5rJALQjvLc51XFY5pJ1H9f1Tmu5Qdxs"
+    "7J5wJaH55ZYjCCmCMt7Gb3QL6FGFmjz5U8b6NcbzfoTy"
 )
 
 # Logging
@@ -40,7 +44,6 @@ log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# Print banner
 print_banner() {
     echo ""
     echo -e "${BLUE}╔═══════════════════════════════════════════════════════════╗${NC}"
@@ -50,12 +53,11 @@ print_banner() {
     echo -e "${BLUE}║${NC}                                                           ${BLUE}║${NC}"
     echo -e "${BLUE}╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${YELLOW}Note: X1-Aether verifies the chain but does NOT vote or earn rewards.${NC}"
+    echo -e "${YELLOW}X1-Aether verifies the blockchain but does NOT vote or earn rewards.${NC}"
     echo -e "${YELLOW}For staking rewards, use X1-Forge instead.${NC}"
     echo ""
 }
 
-# Detect system
 detect_system() {
     log_info "Detecting system specifications..."
 
@@ -81,13 +83,12 @@ detect_system() {
     echo ""
 }
 
-# Check requirements (much lower than X1-Forge)
 check_requirements() {
     log_info "Checking minimum requirements..."
 
     local errors=0
 
-    # Check RAM (minimum 8GB for Aether)
+    # Minimum 8GB RAM for non-voting mode
     if [[ $RAM_GB -lt 7 ]]; then
         log_error "Insufficient RAM: ${RAM_GB}GB (minimum 8GB required)"
         errors=$((errors + 1))
@@ -95,7 +96,7 @@ check_requirements() {
         log_success "RAM: ${RAM_GB}GB"
     fi
 
-    # Check CPU (minimum 4 cores)
+    # Minimum 4 cores
     if [[ $CPU_CORES -lt 4 ]]; then
         log_error "Insufficient CPU: ${CPU_CORES} cores (minimum 4 required)"
         errors=$((errors + 1))
@@ -103,7 +104,7 @@ check_requirements() {
         log_success "CPU: ${CPU_CORES} cores"
     fi
 
-    # Check disk (minimum 500GB)
+    # Minimum 500GB disk
     if [[ $DISK_FREE_GB -lt 500 ]]; then
         log_warn "Low disk space: ${DISK_FREE_GB}GB (1TB+ recommended)"
     else
@@ -118,32 +119,6 @@ check_requirements() {
     log_success "All requirements met!"
 }
 
-# Install Go
-install_go() {
-    if command -v go &>/dev/null; then
-        GO_INSTALLED=$(go version | grep -oP 'go\d+\.\d+' | head -1)
-        log_success "Go already installed: $GO_INSTALLED"
-        return
-    fi
-
-    log_info "Installing Go $GO_VERSION..."
-
-    local GO_TARBALL="go${GO_VERSION}.linux-amd64.tar.gz"
-    cd /tmp
-    wget -q "https://go.dev/dl/$GO_TARBALL"
-    sudo rm -rf /usr/local/go
-    sudo tar -C /usr/local -xzf "$GO_TARBALL"
-    rm "$GO_TARBALL"
-
-    # Add to PATH
-    export PATH=$PATH:/usr/local/go/bin
-    echo 'export PATH=$PATH:/usr/local/go/bin' >> "$HOME/.bashrc"
-    echo 'export PATH=$PATH:$HOME/go/bin' >> "$HOME/.bashrc"
-
-    log_success "Go $GO_VERSION installed"
-}
-
-# Install dependencies
 install_dependencies() {
     log_info "Installing system dependencies..."
 
@@ -151,35 +126,43 @@ install_dependencies() {
         sudo apt-get update
         sudo apt-get install -y \
             build-essential \
-            git \
+            pkg-config \
+            libssl-dev \
+            libudev-dev \
+            libclang-dev \
+            protobuf-compiler \
             curl \
             wget \
+            git \
             jq \
-            libzstd-dev \
-            pkg-config
+            zstd
     elif command -v yum &>/dev/null; then
         sudo yum install -y \
-            gcc \
-            gcc-c++ \
-            make \
-            git \
-            curl \
-            wget \
-            jq \
-            libzstd-devel \
-            pkgconfig
+            gcc gcc-c++ make \
+            pkgconfig openssl-devel systemd-devel clang \
+            protobuf-compiler curl wget git jq zstd
     fi
 
     log_success "Dependencies installed"
 }
 
-# Create directories
+install_rust() {
+    if command -v rustc &>/dev/null; then
+        log_success "Rust already installed: $(rustc --version)"
+    else
+        log_info "Installing Rust..."
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        source "$HOME/.cargo/env"
+        log_success "Rust installed"
+    fi
+}
+
 create_directories() {
     log_info "Creating directory structure..."
 
     sudo mkdir -p "$INSTALL_DIR"/{bin,lib}
     mkdir -p "$CONFIG_DIR"
-    sudo mkdir -p "$DATA_DIR"/{data,accountsdb}
+    sudo mkdir -p "$DATA_DIR"/ledger
 
     if [[ $EUID -ne 0 ]]; then
         sudo chown -R "$USER:$USER" "$DATA_DIR"
@@ -188,181 +171,128 @@ create_directories() {
     log_success "Directories created"
 }
 
-# Build X1-Aether from source
-build_aether() {
-    log_info "Building X1-Aether from source..."
-    log_warn "This will take 5-10 minutes..."
+build_validator() {
+    log_info "Building X1-Aether (Tachyon non-voting validator)..."
+    log_warn "This will take 15-30 minutes on first build..."
 
     cd /tmp
-    rm -rf aether-build
+    rm -rf tachyon-build
 
-    # Clone upstream
-    git clone --depth 1 https://github.com/$UPSTREAM_REPO.git aether-build
-    cd aether-build
+    git clone --depth 1 https://github.com/$TACHYON_REPO.git tachyon-build
+    cd tachyon-build
 
     # Build with optimizations
-    export CGO_ENABLED=1
-    export GOAMD64=v3
-
-    go build -ldflags="-s -w" -o x1-aether ./cmd/mithril
+    export RUSTFLAGS="-C target-cpu=native"
+    cargo build --release -p tachyon-validator
 
     # Install binary
-    sudo cp x1-aether "$INSTALL_DIR/bin/"
+    sudo cp target/release/tachyon-validator "$INSTALL_DIR/bin/x1-aether"
     sudo chmod +x "$INSTALL_DIR/bin/x1-aether"
 
     # Cleanup
     cd /
-    rm -rf /tmp/aether-build
+    rm -rf /tmp/tachyon-build
 
     log_success "X1-Aether built successfully"
 }
 
-# Create CLI wrapper
+generate_identity() {
+    log_info "Generating node identity..."
+
+    IDENTITY_PATH="$CONFIG_DIR/identity.json"
+
+    if [[ -f "$IDENTITY_PATH" ]]; then
+        log_warn "Identity already exists at $IDENTITY_PATH"
+    else
+        # Install solana CLI for keygen
+        if ! command -v solana-keygen &>/dev/null; then
+            sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+            export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+        fi
+
+        solana-keygen new -o "$IDENTITY_PATH" --no-passphrase --force
+        chmod 600 "$IDENTITY_PATH"
+        log_success "Identity generated: $(solana-keygen pubkey $IDENTITY_PATH)"
+    fi
+}
+
 create_wrapper() {
     log_info "Creating CLI wrapper..."
 
     sudo tee "$BIN_DIR/x1-aether" > /dev/null << 'WRAPPER'
 #!/bin/bash
-# X1-Aether CLI wrapper
-
 INSTALL_DIR="/opt/x1-aether"
-CONFIG_DIR="$HOME/.config/x1-aether"
 
 case "$1" in
-    start)
-        sudo systemctl start x1-aether
-        ;;
-    stop)
-        sudo systemctl stop x1-aether
-        ;;
-    restart)
-        sudo systemctl restart x1-aether
-        ;;
-    status)
-        if systemctl is-active --quiet x1-aether; then
-            echo "X1-Aether: Running"
-            # Show current slot if available
-            if [[ -f "$CONFIG_DIR/status.json" ]]; then
-                cat "$CONFIG_DIR/status.json" | jq .
-            fi
-        else
-            echo "X1-Aether: Stopped"
-        fi
-        ;;
-    logs)
-        journalctl -u x1-aether -f
-        ;;
-    update)
-        shift
-        $INSTALL_DIR/bin/x1-aether-update "$@"
-        ;;
-    rollback)
-        $INSTALL_DIR/bin/x1-aether-rollback
-        ;;
-    run)
-        # Direct run (for debugging)
-        shift
-        $INSTALL_DIR/bin/x1-aether "$@"
-        ;;
+    start)   sudo systemctl start x1-aether ;;
+    stop)    sudo systemctl stop x1-aether ;;
+    restart) sudo systemctl restart x1-aether ;;
+    status)  sudo systemctl status x1-aether ;;
+    logs)    journalctl -u x1-aether -f ;;
+    catchup) solana catchup --our-localhost ;;
     *)
-        echo "X1-Aether - Verification Node for X1"
+        echo "X1-Aether - Non-Voting Verification Node"
         echo ""
         echo "Usage: x1-aether <command>"
         echo ""
         echo "Commands:"
-        echo "  start      Start the verifier"
-        echo "  stop       Stop the verifier"
-        echo "  restart    Restart the verifier"
-        echo "  status     Show verifier status"
-        echo "  logs       Follow verifier logs"
-        echo "  update     Check for and apply updates"
-        echo "  rollback   Rollback to previous version"
-        echo "  run        Run directly (for debugging)"
+        echo "  start    Start the verifier"
+        echo "  stop     Stop the verifier"
+        echo "  restart  Restart the verifier"
+        echo "  status   Show status"
+        echo "  logs     Follow logs"
+        echo "  catchup  Show sync progress"
         ;;
 esac
 WRAPPER
     sudo chmod +x "$BIN_DIR/x1-aether"
-
     log_success "CLI wrapper created"
 }
 
-# Generate configuration
-generate_config() {
-    log_info "Generating configuration..."
-
-    # Calculate optimal settings
-    local TXPAR=$((CPU_CORES * 2))
-    if [[ $TXPAR -gt 32 ]]; then
-        TXPAR=32
-    fi
-
-    cat > "$CONFIG_DIR/config.toml" << EOF
-# X1-Aether Configuration
-# Generated: $(date -u +'%Y-%m-%dT%H:%M:%SZ')
-# Hardware: ${CPU_CORES} cores, ${RAM_GB}GB RAM
-
-[network]
-cluster = "mainnet"
-
-[rpc]
-# X1 Mainnet RPC endpoint
-endpoint = "https://rpc.mainnet.x1.xyz"
-timeout = 30
-retry_attempts = 3
-
-[paths]
-data = "$DATA_DIR/data"
-accountsdb = "$DATA_DIR/accountsdb"
-
-[replay]
-# Transaction parallelism (auto-tuned for $CPU_CORES cores)
-txpar = $TXPAR
-
-[tuning]
-# Optimized for ${RAM_GB}GB RAM
-zstd_decoder_concurrency = $((CPU_CORES / 2))
-flusher_limit = 50
-arena_size = "128MB"
-EOF
-
-    log_success "Configuration saved to $CONFIG_DIR/config.toml"
-}
-
-# Install systemd service
 install_systemd_service() {
     log_info "Installing systemd service..."
 
+    # Calculate ledger limit based on available disk
+    LEDGER_LIMIT=$((DISK_FREE_GB * 1000000 / 2))
+    if [[ $LEDGER_LIMIT -gt 50000000 ]]; then
+        LEDGER_LIMIT=50000000
+    fi
+
     sudo tee /etc/systemd/system/x1-aether.service > /dev/null << EOF
 [Unit]
-Description=X1-Aether Verification Node
+Description=X1-Aether Non-Voting Verification Node
 After=network.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=$USER
-Environment="PATH=/usr/local/go/bin:$HOME/go/bin:/usr/local/bin:/usr/bin"
-Environment="GOGC=100"
-Environment="GOMEMLIMIT=${RAM_GB}GiB"
+Environment="RUST_LOG=solana_metrics=warn,info"
 WorkingDirectory=$DATA_DIR
 
-ExecStart=$INSTALL_DIR/bin/x1-aether run \\
-    --config $CONFIG_DIR/config.toml
+ExecStart=$INSTALL_DIR/bin/x1-aether \\
+    --identity $CONFIG_DIR/identity.json \\
+    --ledger $DATA_DIR/ledger \\
+    --entrypoint entrypoint0.mainnet.x1.xyz:8001 \\
+    --entrypoint entrypoint1.mainnet.x1.xyz:8001 \\
+    --entrypoint entrypoint2.mainnet.x1.xyz:8001 \\
+    --known-validator 7ufaUVtQKzGu5tpFtii9Cg8kR4jcpjQSXwsF3oVPSMZA \\
+    --known-validator 5Rzytnub9yGTFHqSmauFLsAbdXFbehMwPBLiuEgKajUN \\
+    --known-validator 4V2QkkWce8bwTzvvwPiNRNQ4W433ZsGQi9aWU12Q8uBF \\
+    --known-validator CkMwg4TM6jaSC5rJALQjvLc51XFY5pJ1H9f1Tmu5Qdxs \\
+    --known-validator 7J5wJaH55ZYjCCmCMt7Gb3QL6FGFmjz5U8b6NcbzfoTy \\
+    --only-known-rpc \\
+    --no-voting \\
+    --private-rpc \\
+    --rpc-port 8899 \\
+    --dynamic-port-range 8000-8020 \\
+    --wal-recovery-mode skip_any_corrupted_record \\
+    --limit-ledger-size $LEDGER_LIMIT \\
+    --log $DATA_DIR/aether.log
 
-# Resource limits (lightweight)
-MemoryMax=${RAM_GB}G
-CPUQuota=80%
-LimitNOFILE=100000
-
-# Restart behavior
 Restart=on-failure
 RestartSec=30
-TimeoutStartSec=300
-
-# Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=x1-aether
+LimitNOFILE=500000
 
 [Install]
 WantedBy=multi-user.target
@@ -374,41 +304,27 @@ EOF
     log_success "Systemd service installed"
 }
 
-# Print completion
 print_completion() {
     echo ""
     echo -e "${GREEN}╔═══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║${NC}                                                           ${GREEN}║${NC}"
     echo -e "${GREEN}║${NC}   ${GREEN}X1-Aether Installation Complete!${NC}                       ${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}                                                           ${GREEN}║${NC}"
     echo -e "${GREEN}╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo "Configuration: $CONFIG_DIR/config.toml"
-    echo "Data directory: $DATA_DIR"
+    echo "Node Identity: $(solana-keygen pubkey $CONFIG_DIR/identity.json 2>/dev/null || echo 'Generated')"
     echo ""
-    echo "Next steps:"
+    echo "Start the verifier:"
+    echo "  sudo systemctl start x1-aether"
     echo ""
-    echo "  1. Start the verifier"
-    echo "     sudo systemctl start x1-aether"
+    echo "Monitor progress:"
+    echo "  x1-aether logs"
+    echo "  x1-aether catchup"
     echo ""
-    echo "  2. Monitor progress"
-    echo "     journalctl -u x1-aether -f"
-    echo ""
-    echo "Commands:"
-    echo "  x1-aether start    - Start verifier"
-    echo "  x1-aether stop     - Stop verifier"
-    echo "  x1-aether status   - Check status"
-    echo "  x1-aether logs     - View logs"
-    echo "  x1-aether update   - Check for updates"
-    echo ""
-    echo -e "${YELLOW}Note: Initial sync may take several hours depending on your hardware.${NC}"
+    echo -e "${YELLOW}Note: Initial sync takes several hours. This node does NOT earn rewards.${NC}"
     echo ""
 }
 
-# Main
 main() {
     print_banner
-
     detect_system
     check_requirements
 
@@ -421,13 +337,12 @@ main() {
     fi
 
     install_dependencies
-    install_go
+    install_rust
     create_directories
-    build_aether
+    build_validator
+    generate_identity
     create_wrapper
-    generate_config
     install_systemd_service
-
     print_completion
 }
 
