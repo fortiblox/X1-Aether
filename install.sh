@@ -1012,7 +1012,7 @@ ExecStart=$INSTALL_DIR/bin/x1-aether \\
 
 Restart=on-failure
 RestartSec=30
-LimitNOFILE=500000
+LimitNOFILE=1000000
 
 [Install]
 WantedBy=multi-user.target
