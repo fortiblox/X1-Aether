@@ -1,11 +1,11 @@
 #!/bin/bash
-# X1-Aether Installer
+# X1-Aether Installer & Configuration Tool
 # Lightweight Non-Voting Verification Node for X1 Blockchain
 #
-# Usage: curl -sSfL https://raw.githubusercontent.com/fortiblox/X1-Aether/main/install.sh | bash
-#
-# X1-Aether runs the Tachyon validator in non-voting mode to verify
-# the blockchain without participating in consensus or earning rewards.
+# Usage:
+#   curl -sSfL https://raw.githubusercontent.com/fortiblox/X1-Aether/main/install.sh | bash
+#   x1-aether-config         # After installation, use this for configuration
+#   install.sh --config      # Or run installer with --config flag
 
 set -e
 
@@ -26,6 +26,8 @@ INSTALL_DIR="/opt/x1-aether"
 CONFIG_DIR="$HOME/.config/x1-aether"
 DATA_DIR="/mnt/x1-aether"
 BIN_DIR="/usr/local/bin"
+RPC_URL="https://rpc.mainnet.x1.xyz"
+SETTINGS_FILE="$CONFIG_DIR/settings.conf"
 
 # X1 Mainnet Configuration
 ENTRYPOINTS=(
@@ -46,6 +48,444 @@ log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[PASS]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[FAIL]${NC} $1"; }
+
+print_step() {
+    local step=$1
+    local total=$2
+    local desc=$3
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}Step ${step}/${total}: ${desc}${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════
+# Settings Management
+# ═══════════════════════════════════════════════════════════════
+
+load_settings() {
+    AUTOSTART_ENABLED="true"
+    AUTOUPDATE_ENABLED="false"
+    NODE_NAME=""
+    NODE_WEBSITE=""
+    NODE_ICON=""
+
+    if [[ -f "$SETTINGS_FILE" ]]; then
+        source "$SETTINGS_FILE"
+    fi
+}
+
+save_settings() {
+    mkdir -p "$CONFIG_DIR"
+    cat > "$SETTINGS_FILE" << EOF
+# X1-Aether Settings
+AUTOSTART_ENABLED="$AUTOSTART_ENABLED"
+AUTOUPDATE_ENABLED="$AUTOUPDATE_ENABLED"
+NODE_NAME="$NODE_NAME"
+NODE_WEBSITE="$NODE_WEBSITE"
+NODE_ICON="$NODE_ICON"
+EOF
+}
+
+# ═══════════════════════════════════════════════════════════════
+# Configuration Menu (Post-Install)
+# ═══════════════════════════════════════════════════════════════
+
+show_config_menu() {
+    load_settings
+
+    while true; do
+        clear
+        echo ""
+        echo -e "${CYAN}╔═══════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${CYAN}║${NC}   ${GREEN}${BOLD}X1-Aether Configuration${NC}                                ${CYAN}║${NC}"
+        echo -e "${CYAN}╚═══════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+
+        if [[ -f "$CONFIG_DIR/identity.json" ]]; then
+            IDENTITY_PUBKEY=$(solana-keygen pubkey "$CONFIG_DIR/identity.json" 2>/dev/null || echo "invalid")
+            echo -e "  Identity: ${GREEN}$IDENTITY_PUBKEY${NC}"
+        else
+            echo -e "  Identity: ${RED}Not configured${NC}"
+        fi
+
+        if [[ -n "$NODE_NAME" ]]; then
+            echo -e "  Node Name: ${GREEN}$NODE_NAME${NC}"
+        else
+            echo -e "  Node Name: ${DIM}Not set${NC}"
+        fi
+
+        if systemctl is-enabled x1-aether &>/dev/null; then
+            echo -e "  Auto-start: ${GREEN}Enabled${NC}"
+        else
+            echo -e "  Auto-start: ${YELLOW}Disabled${NC}"
+        fi
+
+        if [[ "$AUTOUPDATE_ENABLED" == "true" ]]; then
+            echo -e "  Auto-update: ${GREEN}Enabled${NC}"
+        else
+            echo -e "  Auto-update: ${YELLOW}Disabled${NC}"
+        fi
+
+        if systemctl is-active x1-aether &>/dev/null; then
+            echo -e "  Service: ${GREEN}Running${NC}"
+        else
+            echo -e "  Service: ${YELLOW}Stopped${NC}"
+        fi
+
+        echo ""
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo "  1) Identity Management"
+        echo "  2) Node Identity (name, website, icon)"
+        echo "  3) Toggle Auto-Start on Boot"
+        echo "  4) Toggle Auto-Update"
+        echo "  5) Reconfigure Firewall"
+        echo "  6) View Node Info"
+        echo "  7) Rebuild Binary"
+        echo ""
+        echo "  0) Exit"
+        echo ""
+        read -p "Select option: " config_choice
+
+        case $config_choice in
+            1) identity_menu ;;
+            2) node_identity_menu ;;
+            3) toggle_autostart ;;
+            4) toggle_autoupdate ;;
+            5) configure_firewall; read -p "Press Enter to continue..." ;;
+            6) show_node_info; read -p "Press Enter to continue..." ;;
+            7) rebuild_binary; read -p "Press Enter to continue..." ;;
+            0) exit 0 ;;
+            *) ;;
+        esac
+    done
+}
+
+identity_menu() {
+    while true; do
+        clear
+        echo ""
+        echo -e "${BOLD}Identity Management${NC}"
+        echo ""
+
+        if [[ -f "$CONFIG_DIR/identity.json" ]]; then
+            echo -e "  Current: $(solana-keygen pubkey $CONFIG_DIR/identity.json 2>/dev/null)"
+        fi
+
+        echo ""
+        echo "  1) View identity public key"
+        echo "  2) Import identity from file"
+        echo "  3) Import identity from bytes"
+        echo "  4) Generate new identity (backup first!)"
+        echo ""
+        echo "  0) Back"
+        echo ""
+        read -p "Select option: " choice
+
+        case $choice in
+            1)
+                echo ""
+                echo "Identity: $(solana-keygen pubkey $CONFIG_DIR/identity.json 2>/dev/null || echo 'Not found')"
+                read -p "Press Enter to continue..."
+                ;;
+            2)
+                echo ""
+                read -p "Path to identity.json: " import_path
+                import_path="${import_path/#\~/$HOME}"
+                if [[ -f "$import_path" ]] && solana-keygen pubkey "$import_path" &>/dev/null; then
+                    cp "$import_path" "$CONFIG_DIR/identity.json"
+                    chmod 600 "$CONFIG_DIR/identity.json"
+                    log_success "Identity imported"
+                else
+                    log_error "Invalid file"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            3)
+                echo ""
+                echo "Paste private key bytes (JSON array):"
+                read -r bytes
+                echo "$bytes" > "$CONFIG_DIR/identity.json"
+                chmod 600 "$CONFIG_DIR/identity.json"
+                if solana-keygen pubkey "$CONFIG_DIR/identity.json" &>/dev/null; then
+                    log_success "Identity imported"
+                else
+                    log_error "Invalid bytes"
+                    rm -f "$CONFIG_DIR/identity.json"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            4)
+                echo ""
+                echo -e "${RED}WARNING: This will overwrite your current identity!${NC}"
+                read -p "Type YES to confirm: " confirm
+                if [[ "$confirm" == "YES" ]]; then
+                    if [[ -f "$CONFIG_DIR/identity.json" ]]; then
+                        mv "$CONFIG_DIR/identity.json" "$CONFIG_DIR/identity.json.backup.$(date +%s)"
+                    fi
+                    solana-keygen new -o "$CONFIG_DIR/identity.json" --no-passphrase --force
+                    chmod 600 "$CONFIG_DIR/identity.json"
+                    log_success "New identity generated"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            0) return ;;
+        esac
+    done
+}
+
+node_identity_menu() {
+    load_settings
+
+    while true; do
+        clear
+        echo ""
+        echo -e "${BOLD}Node Identity & Branding${NC}"
+        echo ""
+        echo "Set your node's public identity on the X1 network."
+        echo ""
+
+        echo -e "  Current Name:    ${NODE_NAME:-${DIM}Not set${NC}}"
+        echo -e "  Current Website: ${NODE_WEBSITE:-${DIM}Not set${NC}}"
+        echo -e "  Current Icon:    ${NODE_ICON:-${DIM}Not set${NC}}"
+        echo ""
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo "  1) Set Node Name"
+        echo "  2) Set Website URL"
+        echo "  3) Set Icon/Image URL"
+        echo "  4) Publish to Network"
+        echo "  5) View Current On-Chain Info"
+        echo ""
+        echo "  0) Back"
+        echo ""
+        read -p "Select option: " choice
+
+        case $choice in
+            1)
+                echo ""
+                echo "Enter your node name (e.g., 'MyNode', 'Verification Node #1'):"
+                read -p "> " new_name
+                if [[ -n "$new_name" ]]; then
+                    NODE_NAME="$new_name"
+                    save_settings
+                    log_success "Name set to: $NODE_NAME"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            2)
+                echo ""
+                echo "Enter your website URL (e.g., 'https://mynode.com'):"
+                read -p "> " new_website
+                if [[ -n "$new_website" ]]; then
+                    NODE_WEBSITE="$new_website"
+                    save_settings
+                    log_success "Website set to: $NODE_WEBSITE"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            3)
+                echo ""
+                echo "Enter your icon/image URL (must be publicly accessible)"
+                echo ""
+                echo -e "${DIM}Examples:${NC}"
+                echo "  - https://pbs.twimg.com/profile_images/xxxxx/image.jpg"
+                echo "  - https://i.imgur.com/xxxxx.png"
+                echo "  - https://yoursite.com/logo.png"
+                echo ""
+                read -p "> " new_icon
+                if [[ -n "$new_icon" ]]; then
+                    NODE_ICON="$new_icon"
+                    save_settings
+                    log_success "Icon set to: $NODE_ICON"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            4)
+                publish_node_info
+                read -p "Press Enter to continue..."
+                ;;
+            5)
+                echo ""
+                echo "Fetching on-chain info..."
+                if [[ -f "$CONFIG_DIR/identity.json" ]]; then
+                    solana validator-info get --keypair "$CONFIG_DIR/identity.json" --url $RPC_URL 2>/dev/null || echo "No info published yet"
+                else
+                    echo "Identity not found"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            0) return ;;
+        esac
+    done
+}
+
+publish_node_info() {
+    load_settings
+
+    echo ""
+    if [[ -z "$NODE_NAME" ]]; then
+        log_error "Node name is required. Set it first."
+        return
+    fi
+
+    if [[ ! -f "$CONFIG_DIR/identity.json" ]]; then
+        log_error "Identity not found"
+        return
+    fi
+
+    echo "Publishing node info..."
+    echo ""
+    echo "  Name:    $NODE_NAME"
+    echo "  Website: ${NODE_WEBSITE:-Not set}"
+    echo "  Icon:    ${NODE_ICON:-Not set}"
+    echo ""
+
+    CMD="solana validator-info publish \"$NODE_NAME\""
+    CMD="$CMD --keypair \"$CONFIG_DIR/identity.json\""
+    CMD="$CMD --url $RPC_URL"
+
+    if [[ -n "$NODE_WEBSITE" ]]; then
+        CMD="$CMD --website \"$NODE_WEBSITE\""
+    fi
+
+    if [[ -n "$NODE_ICON" ]]; then
+        CMD="$CMD --icon-url \"$NODE_ICON\""
+    fi
+
+    if eval $CMD; then
+        log_success "Node info published!"
+    else
+        log_error "Failed to publish. Your identity may need XNT for the transaction."
+    fi
+}
+
+toggle_autostart() {
+    if systemctl is-enabled x1-aether &>/dev/null; then
+        sudo systemctl disable x1-aether
+        log_success "Auto-start disabled"
+    else
+        sudo systemctl enable x1-aether
+        log_success "Auto-start enabled"
+    fi
+    sleep 1
+}
+
+toggle_autoupdate() {
+    load_settings
+
+    if [[ "$AUTOUPDATE_ENABLED" == "true" ]]; then
+        AUTOUPDATE_ENABLED="false"
+        (crontab -l 2>/dev/null | grep -v "x1-aether-update") | crontab -
+        log_success "Auto-update disabled"
+    else
+        AUTOUPDATE_ENABLED="true"
+        install_autoupdater
+        log_success "Auto-update enabled (checks daily at 4 AM)"
+    fi
+
+    save_settings
+    sleep 1
+}
+
+install_autoupdater() {
+    sudo tee "$INSTALL_DIR/bin/x1-aether-update" > /dev/null << 'UPDATER'
+#!/bin/bash
+INSTALL_DIR="/opt/x1-aether"
+TACHYON_REPO="x1-labs/tachyon"
+LOG_FILE="/var/log/x1-aether-update.log"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"; }
+
+log "Starting update check..."
+
+cd /tmp
+rm -rf tachyon-check
+git clone --depth 1 https://github.com/$TACHYON_REPO.git tachyon-check 2>/dev/null
+
+if [[ -d tachyon-check ]]; then
+    NEW_COMMIT=$(cd tachyon-check && git rev-parse HEAD)
+    CURRENT_COMMIT=$(cat "$INSTALL_DIR/commit" 2>/dev/null || echo "none")
+
+    if [[ "$NEW_COMMIT" != "$CURRENT_COMMIT" ]]; then
+        log "Update available: $CURRENT_COMMIT -> $NEW_COMMIT"
+
+        cd tachyon-check
+        export RUSTFLAGS="-C target-cpu=native"
+        if cargo build --release -p tachyon-validator >> "$LOG_FILE" 2>&1; then
+            systemctl stop x1-aether 2>/dev/null
+            cp "$INSTALL_DIR/bin/x1-aether" "$INSTALL_DIR/bin/x1-aether.backup" 2>/dev/null
+            cp target/release/tachyon-validator "$INSTALL_DIR/bin/x1-aether"
+            chmod +x "$INSTALL_DIR/bin/x1-aether"
+            echo "$NEW_COMMIT" > "$INSTALL_DIR/commit"
+            systemctl start x1-aether 2>/dev/null
+            log "Update completed"
+        else
+            log "Build failed"
+        fi
+    else
+        log "Already up to date"
+    fi
+    rm -rf /tmp/tachyon-check
+fi
+UPDATER
+    sudo chmod +x "$INSTALL_DIR/bin/x1-aether-update"
+    (crontab -l 2>/dev/null | grep -v "x1-aether-update"; echo "0 4 * * * $INSTALL_DIR/bin/x1-aether-update") | crontab -
+}
+
+show_node_info() {
+    echo ""
+    echo -e "${BOLD}Node Information${NC}"
+    echo ""
+
+    if [[ -f "$CONFIG_DIR/identity.json" ]]; then
+        echo "Identity: $(solana-keygen pubkey $CONFIG_DIR/identity.json)"
+    fi
+
+    echo ""
+    echo "Binary Version: $(cat $INSTALL_DIR/version 2>/dev/null || echo 'Unknown')"
+    echo "Service Status: $(systemctl is-active x1-aether 2>/dev/null || echo 'Unknown')"
+}
+
+rebuild_binary() {
+    echo ""
+    log_info "Rebuilding from source..."
+    read -p "Continue? (y/N): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        return
+    fi
+
+    if systemctl is-active x1-aether &>/dev/null; then
+        sudo systemctl stop x1-aether
+    fi
+
+    cd /tmp
+    rm -rf tachyon-build
+    git clone --depth 1 https://github.com/$TACHYON_REPO.git tachyon-build
+    cd tachyon-build
+
+    export RUSTFLAGS="-C target-cpu=native"
+    cargo build --release -p tachyon-validator
+
+    sudo cp target/release/tachyon-validator "$INSTALL_DIR/bin/x1-aether"
+    sudo chmod +x "$INSTALL_DIR/bin/x1-aether"
+
+    cd /
+    rm -rf /tmp/tachyon-build
+
+    log_success "Binary rebuilt"
+
+    read -p "Start service? (Y/n): " start
+    if [[ ! "$start" =~ ^[Nn]$ ]]; then
+        sudo systemctl start x1-aether
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════
+# Installation Functions
+# ═══════════════════════════════════════════════════════════════
 
 print_banner() {
     clear
@@ -69,10 +509,11 @@ print_overview() {
     echo ""
     echo "  1. Check system requirements (RAM, CPU, disk space)"
     echo "  2. Install build tools, Rust, and Solana CLI"
-    echo "  3. Generate or import your node identity keypair"
-    echo "  4. Build the validator from source (compiles Tachyon)"
-    echo "  5. Configure firewall ports (8000-8020, 8899)"
-    echo "  6. Install systemd service for auto-start"
+    echo "  3. Generate or import your node identity"
+    echo "  4. Set node identity (name, website, icon) - optional"
+    echo "  5. Build the node from source (compiles Tachyon)"
+    echo "  6. Configure firewall ports (8000-8020, 8899)"
+    echo "  7. Optionally install as systemd service"
     echo ""
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${BOLD}What You'll Need:${NC}"
@@ -93,24 +534,20 @@ print_overview() {
     echo "  - 500 GB NVMe storage (1 TB recommended)"
     echo "  - Ports 8000-8020, 8899 open"
     echo ""
-}
-
-print_step() {
-    local step=$1
-    local total=$2
-    local desc=$3
-    echo ""
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BOLD}Step ${step}/${total}: ${desc}${NC}"
+    echo -e "${BOLD}After Installation:${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
+    echo "  Run 'x1-aether-config' to:"
+    echo "  - Manage identity"
+    echo "  - Toggle auto-start on boot"
+    echo "  - Enable/disable auto-updates"
+    echo "  - Update node branding"
+    echo ""
 }
 
-# ============================================================================
-# STEP 1: System Requirements Check
-# ============================================================================
 check_requirements() {
-    print_step 1 6 "Checking System Requirements"
+    print_step 1 7 "Checking System Requirements"
 
     OS=$(uname -s)
     ARCH=$(uname -m)
@@ -131,7 +568,6 @@ check_requirements() {
     local errors=0
     local warnings=0
 
-    # RAM Check (8GB minimum for non-voting)
     if [[ $RAM_GB -ge 16 ]]; then
         log_success "RAM: ${RAM_GB}GB (recommended: 16GB+)"
     elif [[ $RAM_GB -ge 7 ]]; then
@@ -142,7 +578,6 @@ check_requirements() {
         errors=$((errors + 1))
     fi
 
-    # CPU Check (4 cores minimum)
     if [[ $CPU_CORES -ge 8 ]]; then
         log_success "CPU: ${CPU_CORES} cores (recommended: 8+)"
     elif [[ $CPU_CORES -ge 4 ]]; then
@@ -153,7 +588,6 @@ check_requirements() {
         errors=$((errors + 1))
     fi
 
-    # Disk Check (500GB minimum)
     if [[ $DISK_FREE_GB -ge 1000 ]]; then
         log_success "Disk: ${DISK_FREE_GB}GB free (recommended: 1TB+)"
     elif [[ $DISK_FREE_GB -ge 500 ]]; then
@@ -164,310 +598,189 @@ check_requirements() {
         errors=$((errors + 1))
     fi
 
-    # Network ports check
-    if command -v ss &>/dev/null; then
-        if ss -tuln | grep -q ':8899 '; then
-            log_warn "Port 8899 already in use"
-            warnings=$((warnings + 1))
-        else
-            log_success "Port 8899: Available"
-        fi
+    if command -v ss &>/dev/null && ss -tuln | grep -q ':8899 '; then
+        log_warn "Port 8899 already in use"
+        warnings=$((warnings + 1))
     else
-        log_success "Port check: Skipped (ss not available)"
+        log_success "Port 8899: Available"
     fi
 
     echo ""
 
     if [[ $errors -gt 0 ]]; then
-        echo -e "${RED}╔═══════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${RED}║  System does not meet minimum requirements                ║${NC}"
-        echo -e "${RED}╚═══════════════════════════════════════════════════════════╝${NC}"
-        echo ""
-        echo "X1-Aether requires: 8GB RAM, 4 CPU cores, 500GB disk"
+        echo -e "${RED}System does not meet minimum requirements${NC}"
         exit 1
     elif [[ $warnings -gt 0 ]]; then
         echo -e "${YELLOW}System meets minimum requirements with $warnings warning(s)${NC}"
     else
-        echo -e "${GREEN}System meets all recommended requirements${NC}"
+        echo -e "${GREEN}All requirements met!${NC}"
     fi
 }
 
-# ============================================================================
-# STEP 2: Install Dependencies
-# ============================================================================
 install_dependencies() {
-    print_step 2 6 "Installing Dependencies"
-
-    log_info "Installing system packages..."
+    print_step 2 7 "Installing Dependencies"
 
     if command -v apt-get &>/dev/null; then
         sudo apt-get update -qq
         sudo apt-get install -y -qq \
-            build-essential \
-            pkg-config \
-            libssl-dev \
-            libudev-dev \
-            libclang-dev \
-            protobuf-compiler \
-            curl \
-            wget \
-            git \
-            jq \
-            zstd
+            build-essential pkg-config libssl-dev libudev-dev \
+            libclang-dev protobuf-compiler curl wget git jq zstd
     elif command -v yum &>/dev/null; then
         sudo yum install -y \
-            gcc gcc-c++ make \
-            pkgconfig openssl-devel systemd-devel clang \
-            protobuf-compiler curl wget git jq zstd
-    else
-        log_error "Unsupported package manager. Install dependencies manually."
-        exit 1
+            gcc gcc-c++ make pkgconfig openssl-devel systemd-devel \
+            clang protobuf-compiler curl wget git jq zstd
     fi
-
     log_success "System packages installed"
 
-    # Install Rust
     if command -v rustc &>/dev/null; then
-        log_success "Rust already installed: $(rustc --version)"
+        log_success "Rust already installed"
     else
-        log_info "Installing Rust..."
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
         source "$HOME/.cargo/env"
         log_success "Rust installed"
     fi
 
-    # Install Solana CLI (for keygen)
     if command -v solana-keygen &>/dev/null; then
         log_success "Solana CLI already installed"
     else
-        log_info "Installing Solana CLI..."
         sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
         export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
         log_success "Solana CLI installed"
     fi
 }
 
-# ============================================================================
-# STEP 3: Setup Identity
-# ============================================================================
 setup_identity() {
-    print_step 3 6 "Node Identity Setup"
+    print_step 3 7 "Node Identity Setup"
 
     mkdir -p "$CONFIG_DIR"
     IDENTITY_PATH="$CONFIG_DIR/identity.json"
 
-    # Check for existing identity
     if [[ -f "$IDENTITY_PATH" ]]; then
-        EXISTING_PUBKEY=$(solana-keygen pubkey "$IDENTITY_PATH" 2>/dev/null || echo "unknown")
-        echo "Existing identity found: $EXISTING_PUBKEY"
-        echo ""
-        echo "What would you like to do?"
+        EXISTING=$(solana-keygen pubkey "$IDENTITY_PATH" 2>/dev/null || echo "unknown")
+        echo "Existing identity: $EXISTING"
         echo ""
         echo "  1) Keep existing identity"
-        echo "  2) Import identity from another file"
-        echo "  3) Import identity from private key bytes"
-        echo "  4) Generate new identity (overwrites existing)"
+        echo "  2) Import from file"
+        echo "  3) Import from bytes"
+        echo "  4) Generate new"
         echo ""
-        read -p "Select option [1-4]: " identity_choice
+        read -p "Select [1-4]: " choice
     else
-        echo "No existing identity found."
-        echo ""
-        echo "What would you like to do?"
-        echo ""
         echo "  1) Generate new identity"
-        echo "  2) Import identity from another file"
-        echo "  3) Import identity from private key bytes"
+        echo "  2) Import from file"
+        echo "  3) Import from bytes"
         echo ""
-        read -p "Select option [1-3]: " identity_choice
-
-        # Remap choices for no-existing-identity case
-        case $identity_choice in
-            1) identity_choice=4 ;;  # Generate new
-            2) identity_choice=2 ;;  # Import file
-            3) identity_choice=3 ;;  # Import bytes
+        read -p "Select [1-3]: " choice
+        case $choice in
+            1) choice=4 ;;
+            2) choice=2 ;;
+            3) choice=3 ;;
         esac
     fi
 
-    case $identity_choice in
-        1)
-            log_success "Keeping existing identity: $EXISTING_PUBKEY"
-            ;;
+    case $choice in
+        1) log_success "Keeping existing identity" ;;
         2)
-            echo ""
-            read -p "Enter path to identity.json file: " import_path
-            import_path="${import_path/#\~/$HOME}"
-
-            if [[ ! -f "$import_path" ]]; then
-                log_error "File not found: $import_path"
-                exit 1
-            fi
-
-            # Validate it's a valid keypair
-            if solana-keygen pubkey "$import_path" &>/dev/null; then
-                cp "$import_path" "$IDENTITY_PATH"
-                chmod 600 "$IDENTITY_PATH"
-                log_success "Identity imported: $(solana-keygen pubkey $IDENTITY_PATH)"
-            else
-                log_error "Invalid keypair file"
-                exit 1
-            fi
+            read -p "Path to identity.json: " path
+            path="${path/#\~/$HOME}"
+            cp "$path" "$IDENTITY_PATH"
+            chmod 600 "$IDENTITY_PATH"
+            log_success "Imported: $(solana-keygen pubkey $IDENTITY_PATH)"
             ;;
         3)
-            echo ""
-            echo "Paste your private key bytes (JSON array format):"
-            echo "Example: [123,45,67,...]"
-            echo ""
-            read -p "> " key_bytes
-
-            echo "$key_bytes" > "$IDENTITY_PATH"
+            echo "Paste bytes:"
+            read -r bytes
+            echo "$bytes" > "$IDENTITY_PATH"
             chmod 600 "$IDENTITY_PATH"
-
-            if solana-keygen pubkey "$IDENTITY_PATH" &>/dev/null; then
-                log_success "Identity imported: $(solana-keygen pubkey $IDENTITY_PATH)"
-            else
-                log_error "Invalid private key bytes"
-                rm -f "$IDENTITY_PATH"
-                exit 1
-            fi
+            log_success "Imported: $(solana-keygen pubkey $IDENTITY_PATH)"
             ;;
         4)
             if [[ -f "$IDENTITY_PATH" ]]; then
-                # Backup existing
                 mv "$IDENTITY_PATH" "$IDENTITY_PATH.backup.$(date +%s)"
-                log_warn "Existing identity backed up"
             fi
-
             solana-keygen new -o "$IDENTITY_PATH" --no-passphrase --force
             chmod 600 "$IDENTITY_PATH"
-            log_success "New identity generated: $(solana-keygen pubkey $IDENTITY_PATH)"
-            ;;
-        *)
-            log_error "Invalid option"
-            exit 1
+            log_success "Generated: $(solana-keygen pubkey $IDENTITY_PATH)"
             ;;
     esac
 
     echo ""
     echo -e "${YELLOW}╔═══════════════════════════════════════════════════════════╗${NC}"
     echo -e "${YELLOW}║  BACKUP YOUR IDENTITY FILE                                ║${NC}"
-    echo -e "${YELLOW}╠═══════════════════════════════════════════════════════════╣${NC}"
-    echo -e "${YELLOW}║${NC}  Location: $CONFIG_DIR/identity.json"
-    echo -e "${YELLOW}║${NC}  "
-    echo -e "${YELLOW}║${NC}  Store a copy in secure offline storage."
-    echo -e "${YELLOW}║${NC}  Loss of this file = loss of your node identity."
+    echo -e "${YELLOW}║  $IDENTITY_PATH${NC}"
     echo -e "${YELLOW}╚═══════════════════════════════════════════════════════════╝${NC}"
-    echo ""
     read -p "Press Enter to continue..."
 }
 
-# ============================================================================
-# STEP 4: Build Validator
-# ============================================================================
-build_validator() {
-    print_step 4 6 "Building X1-Aether"
+setup_node_identity() {
+    print_step 4 7 "Node Identity (Optional)"
 
-    log_warn "Building from source. This takes 15-30 minutes..."
+    echo "Set your node's public identity on the network."
+    echo ""
+    read -p "Configure now? (y/N): " configure
+    if [[ ! "$configure" =~ ^[Yy]$ ]]; then
+        log_info "Skipped. Run 'x1-aether-config' later."
+        return
+    fi
+
+    echo ""
+    echo "Node name (e.g., 'MyNode', 'Verification Node #1'):"
+    read -p "> " NODE_NAME
+
+    echo ""
+    echo "Website URL (optional):"
+    read -p "> " NODE_WEBSITE
+
+    echo ""
+    echo "Icon/Image URL (optional)"
+    echo -e "${DIM}Examples:${NC}"
+    echo "  - https://pbs.twimg.com/profile_images/xxxxx/image.jpg"
+    echo "  - https://i.imgur.com/xxxxx.png"
+    echo ""
+    read -p "> " NODE_ICON
+
+    save_settings
+
+    if [[ -n "$NODE_NAME" ]]; then
+        log_info "Publishing node info..."
+        CMD="solana validator-info publish \"$NODE_NAME\" --keypair \"$CONFIG_DIR/identity.json\" --url $RPC_URL"
+        [[ -n "$NODE_WEBSITE" ]] && CMD="$CMD --website \"$NODE_WEBSITE\""
+        [[ -n "$NODE_ICON" ]] && CMD="$CMD --icon-url \"$NODE_ICON\""
+        eval $CMD 2>/dev/null && log_success "Published!" || log_warn "Could not publish now. Retry via x1-aether-config."
+    fi
+}
+
+build_node() {
+    print_step 5 7 "Building X1-Aether"
+
+    log_warn "Building from source (15-30 minutes)..."
     echo ""
 
-    # Create directories
     sudo mkdir -p "$INSTALL_DIR"/{bin,lib}
     sudo mkdir -p "$DATA_DIR"/ledger
-
-    if [[ $EUID -ne 0 ]]; then
-        sudo chown -R "$USER:$USER" "$DATA_DIR"
-    fi
+    sudo chown -R "$USER:$USER" "$DATA_DIR" 2>/dev/null || true
 
     cd /tmp
     rm -rf tachyon-build
-
-    log_info "Cloning Tachyon repository..."
     git clone --depth 1 https://github.com/$TACHYON_REPO.git tachyon-build
     cd tachyon-build
 
-    log_info "Compiling (this is the slow part)..."
     export RUSTFLAGS="-C target-cpu=native"
     cargo build --release -p tachyon-validator
 
-    # Install binary
     sudo cp target/release/tachyon-validator "$INSTALL_DIR/bin/x1-aether"
     sudo chmod +x "$INSTALL_DIR/bin/x1-aether"
+    echo "$AETHER_VERSION" | sudo tee "$INSTALL_DIR/version" > /dev/null
+    git rev-parse HEAD | sudo tee "$INSTALL_DIR/commit" > /dev/null
 
-    # Cleanup
     cd /
     rm -rf /tmp/tachyon-build
 
-    log_success "X1-Aether built successfully"
-}
+    log_success "Binary built"
 
-# ============================================================================
-# STEP 5: Configure Firewall
-# ============================================================================
-configure_firewall() {
-    print_step 5 6 "Configuring Firewall"
-
-    log_info "Opening required ports..."
-    echo ""
-    echo "Required ports:"
-    echo "  - 8000-8020 (UDP/TCP): Gossip and data transfer"
-    echo "  - 8899 (TCP): RPC (local only)"
-    echo ""
-
-    # Detect and configure firewall
-    if command -v ufw &>/dev/null && sudo ufw status | grep -q "Status: active"; then
-        log_info "Detected UFW firewall, configuring..."
-        sudo ufw allow 8000:8020/tcp >/dev/null 2>&1
-        sudo ufw allow 8000:8020/udp >/dev/null 2>&1
-        sudo ufw allow 8899/tcp >/dev/null 2>&1
-        log_success "UFW rules added"
-
-    elif command -v firewall-cmd &>/dev/null && systemctl is-active --quiet firewalld; then
-        log_info "Detected firewalld, configuring..."
-        sudo firewall-cmd --permanent --add-port=8000-8020/tcp >/dev/null 2>&1
-        sudo firewall-cmd --permanent --add-port=8000-8020/udp >/dev/null 2>&1
-        sudo firewall-cmd --permanent --add-port=8899/tcp >/dev/null 2>&1
-        sudo firewall-cmd --reload >/dev/null 2>&1
-        log_success "Firewalld rules added"
-
-    elif command -v iptables &>/dev/null; then
-        log_info "Configuring iptables..."
-        sudo iptables -A INPUT -p tcp --dport 8000:8020 -j ACCEPT 2>/dev/null || true
-        sudo iptables -A INPUT -p udp --dport 8000:8020 -j ACCEPT 2>/dev/null || true
-        sudo iptables -A INPUT -p tcp --dport 8899 -j ACCEPT 2>/dev/null || true
-
-        # Try to save rules
-        if command -v netfilter-persistent &>/dev/null; then
-            sudo netfilter-persistent save >/dev/null 2>&1 || true
-        elif [[ -f /etc/sysconfig/iptables ]]; then
-            sudo service iptables save >/dev/null 2>&1 || true
-        fi
-        log_success "iptables rules added"
-    else
-        log_warn "No firewall detected or firewall inactive"
-        echo ""
-        echo -e "${YELLOW}Please manually open these ports if you have a firewall:${NC}"
-        echo "  - 8000-8020/tcp and 8000-8020/udp"
-        echo "  - 8899/tcp"
-    fi
-
-    # Check cloud provider firewalls
-    echo ""
-    echo -e "${DIM}Note: If running on a cloud provider (AWS, GCP, Azure, etc.),${NC}"
-    echo -e "${DIM}also configure the security group/firewall rules in your provider's console.${NC}"
-}
-
-# ============================================================================
-# STEP 6: Configure and Install Service
-# ============================================================================
-install_service() {
-    print_step 6 6 "Installing Service"
-
-    # Create CLI wrapper
-    log_info "Creating CLI wrapper..."
-
+    # Install wrappers
     sudo tee "$BIN_DIR/x1-aether" > /dev/null << 'WRAPPER'
 #!/bin/bash
-INSTALL_DIR="/opt/x1-aether"
-
 case "$1" in
     start)   sudo systemctl start x1-aether ;;
     stop)    sudo systemctl stop x1-aether ;;
@@ -475,37 +788,65 @@ case "$1" in
     status)  sudo systemctl status x1-aether ;;
     logs)    journalctl -u x1-aether -f ;;
     catchup) solana catchup --our-localhost ;;
-    *)
-        echo "X1-Aether - Non-Voting Verification Node"
-        echo ""
-        echo "Usage: x1-aether <command>"
-        echo ""
-        echo "Commands:"
-        echo "  start    Start the verifier"
-        echo "  stop     Stop the verifier"
-        echo "  restart  Restart the verifier"
-        echo "  status   Show status"
-        echo "  logs     Follow logs"
-        echo "  catchup  Show sync progress"
-        ;;
+    *)       echo "Commands: start|stop|restart|status|logs|catchup" ;;
 esac
 WRAPPER
     sudo chmod +x "$BIN_DIR/x1-aether"
 
-    # Calculate ledger limit based on available disk
-    DISK_FREE_GB=$(df -BG /mnt 2>/dev/null | awk 'NR==2 {print $4}' | tr -d 'G' || df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
-    LEDGER_LIMIT=$((DISK_FREE_GB * 1000000 / 2))
-    if [[ $LEDGER_LIMIT -gt 50000000 ]]; then
-        LEDGER_LIMIT=50000000
+    sudo tee "$BIN_DIR/x1-aether-config" > /dev/null << 'CONFIG'
+#!/bin/bash
+curl -sSfL https://raw.githubusercontent.com/fortiblox/X1-Aether/main/install.sh | bash -s -- --config
+CONFIG
+    sudo chmod +x "$BIN_DIR/x1-aether-config"
+}
+
+configure_firewall() {
+    print_step 6 7 "Configuring Firewall"
+
+    echo "Required ports: 8000-8020 (UDP/TCP), 8899 (TCP)"
+    echo ""
+
+    if command -v ufw &>/dev/null && sudo ufw status | grep -q "Status: active"; then
+        sudo ufw allow 8000:8020/tcp >/dev/null 2>&1
+        sudo ufw allow 8000:8020/udp >/dev/null 2>&1
+        sudo ufw allow 8899/tcp >/dev/null 2>&1
+        log_success "UFW configured"
+    elif command -v firewall-cmd &>/dev/null && systemctl is-active --quiet firewalld; then
+        sudo firewall-cmd --permanent --add-port=8000-8020/tcp >/dev/null 2>&1
+        sudo firewall-cmd --permanent --add-port=8000-8020/udp >/dev/null 2>&1
+        sudo firewall-cmd --permanent --add-port=8899/tcp >/dev/null 2>&1
+        sudo firewall-cmd --reload >/dev/null 2>&1
+        log_success "Firewalld configured"
+    elif command -v iptables &>/dev/null; then
+        sudo iptables -A INPUT -p tcp --dport 8000:8020 -j ACCEPT 2>/dev/null || true
+        sudo iptables -A INPUT -p udp --dport 8000:8020 -j ACCEPT 2>/dev/null || true
+        sudo iptables -A INPUT -p tcp --dport 8899 -j ACCEPT 2>/dev/null || true
+        log_success "iptables configured"
+    else
+        log_warn "No firewall detected"
     fi
 
-    log_info "Installing systemd service..."
+    echo -e "${DIM}Note: Configure cloud security groups separately.${NC}"
+}
+
+setup_service() {
+    print_step 7 7 "Service Setup"
+
+    echo "Install as systemd service?"
+    read -p "(Y/n): " install_svc
+    if [[ "$install_svc" =~ ^[Nn]$ ]]; then
+        log_info "Skipped service installation"
+        return
+    fi
+
+    DISK_FREE_GB=$(df -BG /mnt 2>/dev/null | awk 'NR==2 {print $4}' | tr -d 'G' || df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
+    LEDGER_LIMIT=$((DISK_FREE_GB * 1000000 / 2))
+    [[ $LEDGER_LIMIT -gt 50000000 ]] && LEDGER_LIMIT=50000000
 
     sudo tee /etc/systemd/system/x1-aether.service > /dev/null << EOF
 [Unit]
 Description=X1-Aether Non-Voting Verification Node
 After=network.target
-Wants=network-online.target
 
 [Service]
 Type=simple
@@ -542,65 +883,75 @@ WantedBy=multi-user.target
 EOF
 
     sudo systemctl daemon-reload
-    sudo systemctl enable x1-aether
+    log_success "Service installed"
 
-    log_success "Service installed and enabled"
+    read -p "Enable auto-start on boot? (Y/n): " autostart
+    if [[ ! "$autostart" =~ ^[Nn]$ ]]; then
+        sudo systemctl enable x1-aether
+        AUTOSTART_ENABLED="true"
+        log_success "Auto-start enabled"
+    else
+        AUTOSTART_ENABLED="false"
+    fi
+
+    read -p "Enable auto-updates? (y/N): " autoupdate
+    if [[ "$autoupdate" =~ ^[Yy]$ ]]; then
+        AUTOUPDATE_ENABLED="true"
+        install_autoupdater
+        log_success "Auto-updates enabled"
+    else
+        AUTOUPDATE_ENABLED="false"
+    fi
+
+    save_settings
 }
 
-# ============================================================================
-# Completion
-# ============================================================================
 print_completion() {
-    IDENTITY_PUBKEY=$(solana-keygen pubkey "$CONFIG_DIR/identity.json" 2>/dev/null || echo "See config")
-
+    clear
     echo ""
     echo -e "${GREEN}╔═══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║                                                           ║${NC}"
-    echo -e "${GREEN}║   ${BOLD}X1-Aether Installation Complete!${NC}                       ${GREEN}║${NC}"
-    echo -e "${GREEN}║                                                           ║${NC}"
+    echo -e "${GREEN}║   X1-Aether Installation Complete!                        ║${NC}"
     echo -e "${GREEN}╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo "Node Identity: $IDENTITY_PUBKEY"
+    echo "Identity: $(solana-keygen pubkey $CONFIG_DIR/identity.json 2>/dev/null)"
     echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BOLD}Next Steps:${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}Commands:${NC}"
+    echo "  x1-aether start     - Start node"
+    echo "  x1-aether stop      - Stop node"
+    echo "  x1-aether logs      - View logs"
+    echo "  x1-aether-config    - Configuration menu"
     echo ""
-    echo "1. Start the verification node:"
-    echo "   sudo systemctl start x1-aether"
-    echo ""
-    echo "2. Monitor sync progress:"
-    echo "   x1-aether logs      # Live logs"
-    echo "   x1-aether catchup   # Sync status"
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo -e "${YELLOW}Note: Initial sync takes several hours.${NC}"
+    echo -e "${YELLOW}Start with: sudo systemctl start x1-aether${NC}"
     echo -e "${YELLOW}This node does NOT vote or earn rewards.${NC}"
-    echo -e "${YELLOW}For staking rewards, use X1-Forge instead.${NC}"
     echo ""
 }
 
-# ============================================================================
+# ═══════════════════════════════════════════════════════════════
 # Main
-# ============================================================================
+# ═══════════════════════════════════════════════════════════════
+
 main() {
+    if [[ "$1" == "--config" ]] || [[ "$1" == "config" ]]; then
+        show_config_menu
+        exit 0
+    fi
+
     print_banner
     print_overview
 
-    read -p "Proceed with installation? (Y/n): " -n 1 -r
+    read -p "Ready to begin? (Y/n): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Nn]$ ]]; then
-        log_info "Installation cancelled"
         exit 0
     fi
 
     check_requirements
     install_dependencies
     setup_identity
-    build_validator
+    setup_node_identity
+    build_node
     configure_firewall
-    install_service
+    setup_service
     print_completion
 }
 

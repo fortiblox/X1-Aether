@@ -1,17 +1,21 @@
 # X1-Aether
 
-**Non-Voting Verification Node for X1 Blockchain**
+**The Silent Observer of the X1 Network**
 
-X1-Aether lets you verify the X1 blockchain independently without participating in consensus or earning rewards. It runs the Tachyon validator in non-voting mode on minimal hardware.
+In ancient philosophy, *Aether* was the pure essence that filled the universe—the medium through which light itself traveled. X1-Aether embodies this concept: an invisible, ever-present witness to every transaction on the X1 blockchain.
+
+X1-Aether nodes silently observe and verify the network without participating in consensus. They ask for nothing in return—no votes, no rewards—just the quiet certainty that the chain remains true.
 
 ## What Does X1-Aether Do?
 
-- Downloads and verifies every block on the X1 network
-- Confirms the blockchain state is valid
-- Does NOT vote on blocks
-- Does NOT earn staking rewards
+- **Watches everything** — Downloads and verifies every block on the X1 network
+- **Trusts nothing** — Independently confirms the blockchain state is valid
+- **Stays silent** — Does NOT vote on blocks or influence consensus
+- **Asks nothing** — Does NOT earn staking rewards
 
-**Want to earn rewards?** Use [X1-Forge](https://github.com/fortiblox/X1-Forge) instead.
+*Aether nodes are the unseen guardians. They verify truth without seeking recognition.*
+
+**Want to actively participate and earn rewards?** Use [X1-Forge](https://github.com/fortiblox/X1-Forge) to become a voting validator.
 
 ## Requirements
 
@@ -130,14 +134,17 @@ curl -s http://localhost:8899 -X POST -H "Content-Type: application/json" \
 
 X1-Aether runs the same Tachyon validator as voting validators, but with `--no-voting`. It syncs and validates everything but doesn't submit votes.
 
-## Comparison: X1-Aether vs X1-Forge
+## Aether vs Forge: Choose Your Role
 
-| Feature | X1-Aether | X1-Forge |
+| | X1-Aether | X1-Forge |
 |---------|-----------|----------|
-| Purpose | Verify chain | Vote & earn rewards |
-| RAM Required | 8 GB | 64 GB |
-| Earns Rewards | No | Yes |
-| Votes | No | Yes |
+| **Role** | Silent Observer | Active Validator |
+| **Purpose** | Verify the chain independently | Vote on blocks & earn rewards |
+| **RAM Required** | 8 GB | 64 GB |
+| **Earns Rewards** | No | Yes |
+| **Participates in Consensus** | No | Yes |
+
+*Aether watches. Forge decides. Both strengthen the network.*
 
 ## Uninstalling
 
