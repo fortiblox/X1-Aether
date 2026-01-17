@@ -43,13 +43,12 @@ curl -sSfL https://raw.githubusercontent.com/fortiblox/X1-Aether/main/install.sh
 
 The installer will:
 1. Check your system meets requirements (RAM, CPU, disk)
-2. Prompt you to confirm before proceeding
-3. Install build tools and dependencies
-4. Install Rust (if not already installed)
-5. Clone and build Tachyon from source (~15-30 minutes)
-6. Generate a node identity keypair
-7. Install the `x1-aether` CLI wrapper
-8. Configure systemd service with `--no-voting` mode
+2. Install build tools, Rust, and Solana CLI
+3. Generate or import your node identity
+4. Optionally set node branding (name, website, icon)
+5. Build the node from source (~15-30 minutes)
+6. Configure firewall ports automatically
+7. Optionally install as systemd service
 
 **Note:** The node does NOT start automatically after installation.
 
@@ -81,6 +80,17 @@ Initial sync takes **several hours** depending on network speed.
 | `x1-aether status` | Show service status |
 | `x1-aether logs` | Follow live logs |
 | `x1-aether catchup` | Show sync progress |
+| `x1-aether-config` | Open configuration menu |
+
+## Configuration
+
+After installation, run `x1-aether-config` to access the configuration menu:
+
+- **Identity Management** — View, import, or generate node identity
+- **Node Branding** — Set name, website, and icon URL (published on-chain)
+- **Auto-Start** — Toggle automatic startup on boot
+- **Auto-Update** — Enable daily automatic updates from the repository
+- **Rebuild Binary** — Recompile from latest source
 
 ## File Locations
 
