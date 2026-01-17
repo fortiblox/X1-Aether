@@ -74,11 +74,8 @@ Config file: `~/.config/x1-aether/config.toml`
 cluster = "mainnet"
 
 [rpc]
-# X1 Mainnet RPC endpoints
-endpoints = [
-    "https://rpc.mainnet.x1.xyz",
-    "https://x1-mainnet.public.blastapi.io"
-]
+# X1 Mainnet RPC endpoint
+endpoint = "https://rpc.mainnet.x1.xyz"
 
 [paths]
 data = "/mnt/x1-aether/data"

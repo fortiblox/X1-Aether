@@ -29,10 +29,9 @@ DATA_DIR="/mnt/x1-aether"
 BIN_DIR="/usr/local/bin"
 GO_VERSION="1.23.0"
 
-# X1 Mainnet RPC endpoints
+# X1 Mainnet RPC endpoint
 RPC_ENDPOINTS=(
     "https://rpc.mainnet.x1.xyz"
-    "https://x1-mainnet.public.blastapi.io"
 )
 
 # Logging
@@ -306,11 +305,8 @@ generate_config() {
 cluster = "mainnet"
 
 [rpc]
-# X1 Mainnet RPC endpoints
-endpoints = [
-    "https://rpc.mainnet.x1.xyz",
-    "https://x1-mainnet.public.blastapi.io"
-]
+# X1 Mainnet RPC endpoint
+endpoint = "https://rpc.mainnet.x1.xyz"
 timeout = 30
 retry_attempts = 3
 
