@@ -144,8 +144,12 @@ show_config_menu() {
         echo "  5) Reconfigure Firewall"
         echo "  6) View Node Info"
         echo "  7) Rebuild Binary"
+        echo -e "  8) ${RED}Uninstall X1-Aether${NC}"
         echo ""
         echo "  0) Exit"
+        echo ""
+        echo -e "${DIM}You are responsible for securing your private keys.${NC}"
+        echo -e "${DIM}We do not store or manage your keys.${NC}"
         echo ""
         read -p "Select option: " config_choice
 
@@ -157,6 +161,7 @@ show_config_menu() {
             5) configure_firewall; read -p "Press Enter to continue..." ;;
             6) show_node_info; read -p "Press Enter to continue..." ;;
             7) rebuild_binary; read -p "Press Enter to continue..." ;;
+            8) uninstall_aether ;;
             0) exit 0 ;;
             *) ;;
         esac
@@ -481,6 +486,66 @@ rebuild_binary() {
     if [[ ! "$start" =~ ^[Nn]$ ]]; then
         sudo systemctl start x1-aether
     fi
+}
+
+uninstall_aether() {
+    clear
+    echo ""
+    echo -e "${RED}${BOLD}╔═══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${RED}${BOLD}║   UNINSTALL X1-AETHER                                     ║${NC}"
+    echo -e "${RED}${BOLD}╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${YELLOW}This will completely remove X1-Aether from your system.${NC}"
+    echo ""
+    echo "The following will be deleted:"
+    echo "  - Service: x1-aether.service"
+    echo "  - Binary: /opt/x1-aether/"
+    echo "  - Data: /mnt/x1-aether/"
+    echo "  - CLI tools: /usr/local/bin/x1-aether*"
+    echo ""
+    echo -e "${CYAN}Your identity file will NOT be deleted:${NC}"
+    echo "  ~/.config/x1-aether/identity.json"
+    echo ""
+    echo -e "${RED}${BOLD}This action cannot be undone!${NC}"
+    echo ""
+    read -p "Type 'UNINSTALL' to confirm: " confirm
+
+    if [[ "$confirm" != "UNINSTALL" ]]; then
+        echo "Cancelled."
+        read -p "Press Enter to continue..."
+        return
+    fi
+
+    echo ""
+    log_info "Stopping service..."
+    sudo systemctl stop x1-aether 2>/dev/null || true
+    sudo systemctl disable x1-aether 2>/dev/null || true
+
+    log_info "Removing service file..."
+    sudo rm -f /etc/systemd/system/x1-aether.service
+    sudo systemctl daemon-reload
+
+    log_info "Removing binary and data..."
+    sudo rm -rf /opt/x1-aether
+    sudo rm -rf /mnt/x1-aether
+
+    log_info "Removing CLI tools..."
+    sudo rm -f /usr/local/bin/x1-aether
+    sudo rm -f /usr/local/bin/x1-aether-config
+
+    log_info "Removing cron jobs..."
+    (crontab -l 2>/dev/null | grep -v "x1-aether") | crontab - 2>/dev/null || true
+
+    echo ""
+    log_success "X1-Aether has been uninstalled."
+    echo ""
+    echo -e "${CYAN}Your identity file was preserved at:${NC}"
+    echo "  ~/.config/x1-aether/identity.json"
+    echo ""
+    echo -e "${DIM}To remove it: rm -rf ~/.config/x1-aether${NC}"
+    echo ""
+    read -p "Press Enter to exit..."
+    exit 0
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -960,6 +1025,11 @@ print_completion() {
     echo -e "${YELLOW}To start your node now:  x1-aether start${NC}"
     echo ""
     echo -e "${DIM}This node does NOT vote or earn rewards.${NC}"
+    echo ""
+    echo -e "${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${DIM}You are solely responsible for securing your private keys.${NC}"
+    echo -e "${DIM}We do not store, manage, or have access to your keys.${NC}"
+    echo -e "${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 }
 
