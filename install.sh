@@ -608,8 +608,15 @@ check_requirements() {
     echo ""
 
     if [[ $errors -gt 0 ]]; then
-        echo -e "${RED}System does not meet minimum requirements${NC}"
-        exit 1
+        echo -e "${RED}${BOLD}System does not meet minimum requirements ($errors issue(s))${NC}"
+        echo ""
+        echo -e "${YELLOW}Proceeding may result in poor performance or failure.${NC}"
+        read -p "Continue anyway? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+        echo -e "${YELLOW}Proceeding with installation...${NC}"
     elif [[ $warnings -gt 0 ]]; then
         echo -e "${YELLOW}System meets minimum requirements with $warnings warning(s)${NC}"
     else
