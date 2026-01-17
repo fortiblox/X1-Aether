@@ -1049,7 +1049,7 @@ print_completion() {
     echo -e "${BOLD}CONFIGURATION:${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    echo "  To change settings later, run: ${BOLD}x1-aether-config${NC}"
+    echo -e "  To change settings later, run: ${BOLD}x1-aether-config${NC}"
     echo ""
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${BOLD}UNINSTALL:${NC}"
