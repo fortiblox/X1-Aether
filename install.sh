@@ -1104,6 +1104,8 @@ main() {
     configure_firewall
     setup_service
     print_completion
+    echo ""
 }
 
 main "$@"
+exit 0
