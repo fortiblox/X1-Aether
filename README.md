@@ -23,42 +23,112 @@ X1-Aether lets you verify the X1 blockchain independently without participating 
 | Network | 50 Mbps | 100 Mbps |
 | OS | Ubuntu 22.04+ | Ubuntu 24.04 |
 
-## Quick Install
+**Additional requirements:**
+- Linux only (Ubuntu/Debian or RHEL/CentOS)
+- `sudo` access (root privileges needed for installation)
+- Open ports: 8000-8020 (gossip), 8899 (RPC)
+- Writable `/mnt` directory (or change data location)
+
+## Installation
+
+### Step 1: Run the Installer
 
 ```bash
 curl -sSfL https://raw.githubusercontent.com/fortiblox/X1-Aether/main/install.sh | bash
 ```
 
 The installer will:
-1. Install Rust and dependencies
-2. Build from Tachyon source (x1-labs/tachyon)
-3. Generate node identity
-4. Configure systemd service with `--no-voting` mode
+1. Check your system meets requirements (RAM, CPU, disk)
+2. Prompt you to confirm before proceeding
+3. Install build tools and dependencies
+4. Install Rust (if not already installed)
+5. Clone and build Tachyon from source (~15-30 minutes)
+6. Generate a node identity keypair
+7. Install the `x1-aether` CLI wrapper
+8. Configure systemd service with `--no-voting` mode
+
+**Note:** The node does NOT start automatically after installation.
+
+### Step 2: Start the Node
+
+```bash
+sudo systemctl start x1-aether
+```
+
+### Step 3: Monitor Sync Progress
+
+```bash
+# Watch the logs
+x1-aether logs
+
+# Check sync status
+x1-aether catchup
+```
+
+Initial sync takes **several hours** depending on network speed.
 
 ## Commands
 
+| Command | Description |
+|---------|-------------|
+| `x1-aether start` | Start the verification node |
+| `x1-aether stop` | Stop the node |
+| `x1-aether restart` | Restart the node |
+| `x1-aether status` | Show service status |
+| `x1-aether logs` | Follow live logs |
+| `x1-aether catchup` | Show sync progress |
+
+## File Locations
+
+| Path | Description |
+|------|-------------|
+| `/opt/x1-aether/bin/x1-aether` | Validator binary |
+| `~/.config/x1-aether/identity.json` | Node identity keypair |
+| `/mnt/x1-aether/ledger/` | Blockchain data |
+| `/mnt/x1-aether/aether.log` | Log file |
+
+## Troubleshooting
+
+### Build fails with "out of memory"
+
+The build needs ~4GB RAM free. Add swap if needed:
+
 ```bash
-# Start verification node
-sudo systemctl start x1-aether
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+# Re-run installer
+```
 
-# Check status
+### Node won't start
+
+```bash
 x1-aether status
+journalctl -u x1-aether -n 50
+```
 
-# View logs
-x1-aether logs
+Common causes: port conflict (8000-8020, 8899), permission issues, missing identity file.
 
-# Check sync progress
-x1-aether catchup
+### Sync is stuck
+
+1. Check network connectivity
+2. Verify firewall allows ports 8000-8020
+3. Check disk space: `df -h /mnt`
+4. Restart: `x1-aether restart`
+
+### How do I know it's working?
+
+Once synced, `x1-aether catchup` shows you're close to network tip. Or query local RPC:
+
+```bash
+curl -s http://localhost:8899 -X POST -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"getSlot"}'
 ```
 
 ## How It Works
 
-X1-Aether runs the same Tachyon validator software as voting validators, but with the `--no-voting` flag. This means:
-
-- It syncs the full blockchain
-- It validates all transactions
-- It does NOT submit votes
-- It uses less resources than a voting validator
+X1-Aether runs the same Tachyon validator as voting validators, but with `--no-voting`. It syncs and validates everything but doesn't submit votes.
 
 ## Comparison: X1-Aether vs X1-Forge
 
@@ -68,14 +138,18 @@ X1-Aether runs the same Tachyon validator software as voting validators, but wit
 | RAM Required | 8 GB | 64 GB |
 | Earns Rewards | No | Yes |
 | Votes | No | Yes |
-| `--no-voting` | Yes | No |
 
-## Use Cases
+## Uninstalling
 
-- **Personal verification**: Trustlessly verify the blockchain
-- **Development**: Test against verified chain state
-- **Research**: Study blockchain data
-- **Learning**: Understand how Solana-style validators work
+```bash
+sudo systemctl stop x1-aether
+sudo systemctl disable x1-aether
+sudo rm /etc/systemd/system/x1-aether.service
+sudo rm -rf /opt/x1-aether /mnt/x1-aether
+sudo rm /usr/local/bin/x1-aether
+rm -rf ~/.config/x1-aether
+sudo systemctl daemon-reload
+```
 
 ## License
 
